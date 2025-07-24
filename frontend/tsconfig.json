@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    /* Language and Module Settings */
+    "target": "es5", // ES5 for wider browser compatibility
+    "lib": [ "dom", "dom.iterable", "esnext" ], // React web
+    "module": "esnext", // Let bundler handle modules
+    "moduleResolution": "node", // Node-style resolution
+    "resolveJsonModule": true, // Allow importing JSON
+    "isolatedModules": true, // Enforce per-file isolation
+    "jsx": "react-jsx", // React JSX (React 17+)
+
+    /* JavaScript & Interop */
+    "allowJs": true, // Allow .js files
+    "esModuleInterop": true, // Allow default imports
+    "allowSyntheticDefaultImports": true, // Allow synthetic imports
+
+    /*  Type Checking */
+    "strict": true, // All strict checks
+    "forceConsistentCasingInFileNames": true, // Enforce consistent casing
+    "skipLibCheck": true, // Skip .d.ts checks
+    "noFallthroughCasesInSwitch": true, // Safer switch statements
+
+    /*  Build Behavior */
+    "noEmit": true // Do not emit JS (CRA handles build)
+  },
+
+  "include": [
+    "src" // Only include frontend src
+  ]
+}

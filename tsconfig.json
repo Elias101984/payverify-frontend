@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    /* Language and Environment */
+    "target": "ES6",
+    "module": "commonjs",
+    "lib": [ "ES6" ],
+    "moduleResolution": "node",
+
+    /* Path Aliases */
+    "baseUrl": ".",
+    "paths": {
+      "controllers/*": [ "src/controllers/*" ],
+      "models/*": [ "src/models/*" ],
+      "middlewares/*": [ "src/middlewares/*" ],
+      "config/*": [ "src/config/*" ]
+    },
+
+    /* Build Output */
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    /* Interop and Compatibility */
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    /* Type Checking */
+    "strict": true,
+
+    /* Debugging */
+    "sourceMap": true
+  },
+
+  /* Files to Include */
+  "include": [
+    "src",
+    "test"
+  ],
+
+  /* Files to Exclude */
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
