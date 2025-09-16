@@ -1,30 +1,45 @@
 {
   "compilerOptions": {
-    /* Language and Module Settings */
-    "target": "es5", // ES5 for wider browser compatibility
-    "lib": [ "dom", "dom.iterable", "esnext" ], // React web
-    "module": "esnext", // Let bundler handle modules
-    "moduleResolution": "node", // Node-style resolution
-    "resolveJsonModule": true, // Allow importing JSON
-    "isolatedModules": true, // Enforce per-file isolation
-    "jsx": "react-jsx", // React JSX (React 17+)
+    /* Language & module */
+    "target": "esnext",
+    "lib": [ "dom", "dom.iterable", "esnext" ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "types": [ "vite/client", "node" ],
 
-    /* JavaScript & Interop */
-    "allowJs": true, // Allow .js files
-    "esModuleInterop": true, // Allow default imports
-    "allowSyntheticDefaultImports": true, // Allow synthetic imports
+    /* Interop */
+    "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
 
-    /*  Type Checking */
-    "strict": true, // All strict checks
-    "forceConsistentCasingInFileNames": true, // Enforce consistent casing
-    "skipLibCheck": true, // Skip .d.ts checks
-    "noFallthroughCasesInSwitch": true, // Safer switch statements
+    /* Type checking */
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
 
-    /*  Build Behavior */
-    "noEmit": true // Do not emit JS (CRA handles build)
+    /* Build behaviour (Vite handles emit) */
+    "noEmit": true,
+
+    /* Absolute imports like '@/components/Button' */
+    "baseUrl": "src",
+    "paths": {
+      "@/*": [ "*" ]
+    },
+
+    /* Ensure local d.ts files are picked up */
+    "typeRoots": [ "./node_modules/@types", "./src/types" ]
   },
 
-  "include": [
-    "src" // Only include frontend src
-  ]
+  /* Only include frontend code */
+  "include": [ "src/**/*", "src/vite-env.d.ts" ],
+
+  /* Never compile backend files from the client build */
+  "exclude": [ "../src/**", "../server/**", "../api/**", "../backend/**", "node_modules" ],
+
+  /* NEW: tell TS there's a separate Node config for vite.config.ts */
+  "references": [ { "path": "./tsconfig.node.json" } ]
 }

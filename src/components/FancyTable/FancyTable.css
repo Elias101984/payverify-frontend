@@ -1,0 +1,67 @@
+/* Base table layout */
+.table-container {
+    overflow-x: auto;
+    border-radius: 8px;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
+    background-color: #fff;
+    padding: 1rem;
+}
+
+/* Table rows */
+table.fancy-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.fancy-table thead {
+    background-color: #f8f9fa;
+}
+
+.fancy-table th,
+.fancy-table td {
+    padding: 12px 16px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.fancy-table tr:hover {
+    background-color: #f1f5f9;
+}
+
+/* Copy icon */
+.copy-icon {
+    margin-left: 8px;
+    cursor: pointer;
+    color: #555;
+    transition: color 0.2s ease;
+}
+
+    .copy-icon:hover {
+        color: #000;
+    }
+
+/* Status badge styles */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: inline-block;
+    text-transform: capitalize;
+}
+
+    .status-badge.completed {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-badge.pending {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+
+    .status-badge.failed {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
