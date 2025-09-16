@@ -1,20 +1,31 @@
-import { Model, DataTypes, Optional } from 'sequelize';
+﻿import { Model, DataTypes, Optional } from 'sequelize';
 import { sequelize } from '../config/db';
+import { Merchant } from './Merchant';
 
+/**
+ * Full set of attributes in the `transactions` table.
+ * Added:
+ *  - reference: unique string per transaction (for QR & tracking)
+ *  - qrUrl: optional Cloudinary URL to QR image
+ */
 interface TransactionAttributes {
     id: number;
     amount: number;
     status: string;
     merchantId: number;
+    reference: string;
+    qrUrl?: string;
     createdAt?: Date;
     updatedAt?: Date;
 }
 
-// Allow creating a transaction without specifying `id` (auto-incremented)
-interface TransactionCreationAttributes extends Optional<TransactionAttributes, 'id'> { }
+/**
+ * Attributes allowed when creating a transaction
+ */
+interface TransactionCreationAttributes extends Optional<TransactionAttributes, 'id' | 'qrUrl'> { }
 
 /**
- * Sequelize Transaction model class with attributes and helper methods.
+ * Sequelize Model representing the 'transactions' table.
  */
 class Transaction extends Model<TransactionAttributes, TransactionCreationAttributes>
     implements TransactionAttributes {
@@ -22,30 +33,26 @@ class Transaction extends Model<TransactionAttributes, TransactionCreationAttrib
     public amount!: number;
     public status!: string;
     public merchantId!: number;
+    public reference!: string;
+    public qrUrl?: string;
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
 
-    /**
-     * Creates a transaction for the given merchant.
-     * Changed: replaced hardcoded `TransactionModel` with `this` for proper static context.
-     */
+    public merchant?: Merchant;
+
+    // Custom static method: create a transaction
     static async createForMerchant(
         merchantId: number,
         amount: number,
-        status: string = 'pending'
+        status: string,
+        reference: string,
+        qrUrl?: string
     ) {
-        return await this.create({ merchantId, amount, status });
+        return await this.create({ merchantId, amount, status, reference, qrUrl });
     }
 
-    /**
-     * Finds all transactions for a merchant, paginated.
-     * Changed: replaced hardcoded `TransactionModel` with `this` for proper static context.
-     */
-    static async findByMerchant(
-        merchantId: number,
-        limit = 10,
-        offset = 0
-    ) {
+    // Custom static method: find transactions for a merchant
+    static async findByMerchant(merchantId: number, limit = 10, offset = 0) {
         return await this.findAndCountAll({
             where: { merchantId },
             order: [['createdAt', 'DESC']],
@@ -55,11 +62,7 @@ class Transaction extends Model<TransactionAttributes, TransactionCreationAttrib
     }
 }
 
-/**
- * Initializes the Sequelize model and attaches it to the `Transaction` class.
- *  Changed: removed unnecessary `TransactionModel` variable.
- *  Why: keeps API clean and uses class name consistently throughout.
- */
+// ✅ Initialize model
 Transaction.init(
     {
         id: {
@@ -80,17 +83,24 @@ Transaction.init(
             type: DataTypes.INTEGER,
             allowNull: false,
         },
+        reference: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            unique: true,
+        },
+        qrUrl: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
     },
     {
         sequelize,
         modelName: 'Transaction',
         tableName: 'transactions',
-        timestamps: true, //  Added: makes it explicit that Sequelize will manage createdAt & updatedAt
+        timestamps: true,
     }
 );
 
-/**
- *  Changed export: Export the `Transaction` class directly as default.
- *  Why: cleaner, consistent import across app.
- */
+
+
 export default Transaction;

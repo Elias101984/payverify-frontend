@@ -5,9 +5,9 @@
  * Mocks DB models to isolate logic from Sequelize.
  */
 
-import { getDashboardStats } from '../../controllers/dashboardController';
-import { Merchant } from '../../models/Merchant';
-import Transaction from '../../models/Transaction';
+import { getDashboardStats } from '../controllers/dashboardController';
+import { Merchant } from '../models/Merchant';
+import Transaction from '../models/Transaction';
 import { Request, Response } from 'express';
 
 // Mock models

@@ -1,0 +1,169 @@
+/* ---------- Tokens ---------- */
+:root {
+    --pv-ink: #0f1115;
+    --pv-muted: #8b909a;
+    --pv-accent: #ffd33f;
+    --pv-bg-grad-1: #f7f7f9;
+    --pv-bg-grad-2: #f0f2f5;
+    --pv-bg-grad-3: #eef1f6;
+    --pv-surface: rgba(255,255,255,.78);
+    --pv-border: rgba(255,255,255,.8);
+    --pv-shadow-1: 0 50px 120px rgba(15,17,21,.12),0 8px 22px rgba(15,17,21,.06);
+}
+
+/* Page background (soft gradient + subtle radial tints) */
+.pv-page {
+    min-height: 100vh;
+    background: radial-gradient(900px 600px at 10% 110%, #e5d8ff2b, transparent 60%), radial-gradient(800px 500px at 100% -10%, #ffd1d92b, transparent 60%), linear-gradient(180deg, var(--pv-bg-grad-1) 0%, var(--pv-bg-grad-2) 60%, var(--pv-bg-grad-3) 100%);
+}
+
+/* Frosted sheet container */
+.pv-stage {
+    background: var(--pv-surface);
+    border: 1px solid var(--pv-border);
+    border-radius: 24px;
+    backdrop-filter: saturate(180%) blur(14px);
+    box-shadow: var(--pv-shadow-1);
+    padding: 28px;
+}
+
+/* Hero header */
+.pv-kicker {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    color: #2f2f35;
+    background: #f2f3f7;
+    border-radius: 999px;
+    padding: 6px 10px;
+}
+
+.pv-title {
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.06;
+    font-size: clamp(28px,4.5vw,48px);
+    color: var(--pv-ink);
+    margin: 4px 0 10px;
+}
+
+.pv-subtle {
+    color: var(--pv-muted);
+}
+
+.pv-divider {
+    height: 3px;
+    background: var(--pv-accent);
+    border-radius: 999px;
+    margin: 12px 0 4px;
+}
+
+/* Header pills */
+.pv-pill-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: #f3f4f7;
+    padding: 6px;
+    border-radius: 999px;
+}
+
+.pv-pill {
+    border: 0;
+    background: transparent;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 700;
+    color: #4a4f5a;
+    cursor: pointer;
+}
+
+    .pv-pill.active {
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(15,17,21,.08);
+    }
+
+/* Glass cards inside the stage (force override if other CSS sets plain white) */
+.pv-stage .card {
+    --bs-card-bg: rgba(255,255,255,.75);
+    --bs-card-border-color: rgba(255,255,255,.85);
+    --bs-card-border-radius: 20px;
+    background-color: var(--bs-card-bg) !important;
+    border: 1px solid var(--bs-card-border-color) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 10px 25px rgba(12,17,29,.06), 0 2px 6px rgba(12,17,29,.04);
+    backdrop-filter: saturate(180%) blur(8px);
+}
+
+/* Inputs / buttons (pill) */
+.form-select, .form-control {
+    border-radius: 14px;
+    border-color: #e6e8ef;
+}
+
+.form-label {
+    font-weight: 600;
+    color: #6c7280;
+}
+
+.btn.btn-primary {
+    border-radius: 999px;
+    padding-inline: 18px;
+    font-weight: 700;
+}
+
+/* Status badges */
+.badge {
+    border-radius: 999px;
+    padding: .5rem .7rem;
+    font-weight: 700;
+}
+
+    .badge.bg-success {
+        background: #00c389 !important;
+    }
+
+    .badge.bg-danger {
+        background: #ff6161 !important;
+    }
+
+    .badge.bg-warning {
+        background: #ffd66e !important;
+        color: #3b3b45 !important;
+    }
+
+/* Table polish */
+.table > :not(caption) > * > * {
+    padding: .85rem 1rem;
+}
+
+.table thead th {
+    font-weight: 700;
+    color: #6c7280;
+    border-bottom-color: #eceef3;
+}
+
+.table-hover tbody tr:hover {
+    background: rgba(0,0,0,.015);
+}
+
+/* Chart rounding */
+.apexcharts-canvas {
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+/* Canary – remove after you see the theme */
+body::after {
+    content: 'tx-theme';
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    font: 10px/1 system-ui, sans-serif;
+    background: #000;
+    color: #fff;
+    opacity: .35;
+    padding: 2px 6px;
+    border-radius: 6px;
+    pointer-events: none;
+}

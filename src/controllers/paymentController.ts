@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import QRCode from 'qrcode';
-import { MerchantModel } from '../models/Merchant';
+import { Merchant } from '../models/Merchant';
 
 /**
  * Generates a QR code for a merchant with optional amount & reference.
@@ -34,7 +34,7 @@ export const generateMerchantQR = async (
         }
 
         // Fetch merchant from DB
-        const merchant = await MerchantModel.findByPk(merchantIdNum);
+        const merchant = await Merchant.findByPk(merchantIdNum);
 
         if (!merchant) {
             return res.status(404).json({ message: 'Merchant not found' });

@@ -1,14 +1,20 @@
+﻿// src/routes/merchantRoutes.ts
 import express from 'express';
-import { getMerchants, createMerchant } from '../controllers/merchantController';
-import { verifyToken } from '../middlewares/authMiddleware';
+import {
+    getAllMerchants,
+    getMerchantById,
+    getMerchantCount,   // ✅ new export
+    createMerchant,
+} from '../controllers/merchantController';
+import { verifyJwtMiddleware } from '../middlewares/authMiddleware';
 
 const router = express.Router();
 
 /**
  * @swagger
  * tags:
- *   name: Merchants
- *   description: Endpoints for managing merchants
+ *   - name: Merchants
+ *     description: Merchant management endpoints
  */
 
 /**
@@ -22,44 +28,60 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: List of merchants
+ */
+router.get('/', verifyJwtMiddleware, getAllMerchants);
+
+/**
+ * @swagger
+ * /api/merchants/count:
+ *   get:
+ *     summary: Count merchants
+ *     tags: [Merchants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: scope
+ *         schema:
+ *           type: string
+ *           enum: [self, all]
+ *         description: self = only current user’s merchants (default), all = all merchants
+ *     responses:
+ *       200:
+ *         description: Count object
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: integer
- *                     example: 1
- *                   name:
- *                     type: string
- *                     example: Test Merchant
- *                   userId:
- *                     type: integer
- *                     example: 1
- *                   cac_number:
- *                     type: string
- *                     example: CAC12345
- *                   tin_number:
- *                     type: string
- *                     example: TIN56789
- *                   bvn:
- *                     type: string
- *                     example: BVN123456
- *                   account_number:
- *                     type: string
- *                     example: 0123456789
- *                   bank_name:
- *                     type: string
- *                     example: Zenith Bank
- *                   qr_code:
- *                     type: string
- *                     example: QR12345
- *       401:
- *         description: Unauthorized - Missing or invalid JWT
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
  */
-router.get('/merchants', verifyToken, getMerchants);
+router.get('/count', verifyJwtMiddleware, getMerchantCount); // ✅ keep BEFORE '/:id'
+
+/**
+ * @swagger
+ * /api/merchants/{id}:
+ *   get:
+ *     summary: Get merchant by ID
+ *     tags: [Merchants]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Merchant found
+ *       400:
+ *         description: Invalid id
+ *       404:
+ *         description: Merchant not found
+ */
+router.get('/:id', verifyJwtMiddleware, getMerchantById);
 
 /**
  * @swagger
@@ -79,75 +101,19 @@ router.get('/merchants', verifyToken, getMerchants);
  *               - name
  *               - userId
  *               - cac_number
+ *               - tin_number
+ *               - bvn
  *               - account_number
  *               - bank_name
- *             properties:
- *               name:
- *                 type: string
- *                 example: New Merchant
- *               userId:
- *                 type: integer
- *                 example: 1
- *               cac_number:
- *                 type: string
- *                 example: CAC12345
- *               tin_number:
- *                 type: string
- *                 example: TIN56789
- *               bvn:
- *                 type: string
- *                 example: BVN123456
- *               account_number:
- *                 type: string
- *                 example: 0123456789
- *               bank_name:
- *                 type: string
- *                 example: Access Bank
- *               qr_code:
- *                 type: string
- *                 example: QR12345
+ *               - email
  *     responses:
  *       201:
- *         description: Merchant created
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: integer
- *                   example: 2
- *                 name:
- *                   type: string
- *                   example: New Merchant
- *                 userId:
- *                   type: integer
- *                   example: 1
- *                 cac_number:
- *                   type: string
- *                   example: CAC12345
- *                 tin_number:
- *                   type: string
- *                   example: TIN56789
- *                 bvn:
- *                   type: string
- *                   example: BVN123456
- *                 account_number:
- *                   type: string
- *                   example: 0123456789
- *                 bank_name:
- *                   type: string
- *                   example: Access Bank
- *                 qr_code:
- *                   type: string
- *                   example: QR12345
+ *         description: Merchant created (+ QR + email)
  *       400:
- *         description: Bad request - Missing required fields
- *       401:
- *         description: Unauthorized - Missing or invalid JWT
+ *         description: Missing/invalid fields
  *       409:
- *         description: Conflict - CAC number must be unique
+ *         description: Duplicate CAC number
  */
-router.post('/merchants', verifyToken, createMerchant);
+router.post('/', verifyJwtMiddleware, createMerchant);
 
 export default router;

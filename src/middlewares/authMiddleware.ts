@@ -1,42 +1,94 @@
+// src/middlewares/authMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { UserJwtPayload } from '../types/express'; // Import the strongly-typed JWT payload
-
-// Read JWT secret from environment variables, fallback to default if not set
-const JWT_SECRET = process.env.JWT_SECRET || 'defaultsecret';
+import { verifyToken } from '../utils/jwtUtils';
+import { UserJwtPayload } from '../types/express';
 
 /**
- * Middleware to verify JWT in Authorization header.
- * Protects routes by ensuring only requests with valid tokens proceed.
- * 
- * What changed:
- *  Replaced `JwtPayload` with `UserJwtPayload` for stronger typing.
- *  Ensures `req.user` has the exact expected shape (id, email, name, role).
- *  Improves developer experience and reduces runtime errors by removing ambiguity.
+ * Type guard: checks that an unknown value matches UserJwtPayload.
+ * This avoids unsafe casting and TS2352 errors.
  */
-export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
-    // Read the Authorization header from the incoming request
+function isUserJwtPayload(v: unknown): v is UserJwtPayload {
+    if (!v || typeof v !== 'object') return false;
+    const o = v as Record<string, unknown>;
+    return (
+        typeof o.id === 'number' &&
+        typeof o.email === 'string' &&
+        typeof o.role === 'string'
+        // name is optional; no check
+    );
+}
+
+/**
+ * JWT authentication middleware.
+ * - Verifies "Authorization: Bearer <token>"
+ * - Validates payload shape via type guard
+ * - Attaches a typed `req.user`
+ */
+export const verifyJwtMiddleware = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+): void => {
     const authHeader = req.headers.authorization;
 
-    // If no Authorization header or not in Bearer format, reject
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ message: 'No token provided' });
+    if (!authHeader?.startsWith('Bearer ')) {
+        res.status(401).json({ message: 'No token provided' });
+        return;
     }
 
-    // Extract the token by removing 'Bearer ' prefix
-    const token = authHeader.split(' ')[1];
+    // Extract raw token
+    const token = authHeader.slice(7).trim();
 
     try {
-        // Verify the JWT and explicitly cast to UserJwtPayload
-        const decoded = jwt.verify(token, JWT_SECRET) as UserJwtPayload;
+        const decoded = verifyToken(token); // whatever your jwtUtils returns
 
-        // Attach the decoded payload to req.user for downstream use
-        req.user = decoded;
+        if (!isUserJwtPayload(decoded)) {
+            // If your token uses different field names, map them here before failing.
+            res.status(401).json({ message: 'Invalid token payload' });
+            return;
+        }
 
-        // Proceed to the next middleware or route handler
+        // Normalize/attach (keeps only the fields we care about)
+        req.user = {
+            id: decoded.id,
+            email: decoded.email,
+            role: decoded.role,
+            name: decoded.name, // optional
+        };
+
         next();
     } catch (err) {
-        // If verification fails, reject the request
-        return res.status(401).json({ message: 'Invalid token' });
+        console.error('JWT verification failed:', err);
+        res.status(401).json({ message: 'Invalid or expired token' });
     }
 };
+
+/**
+ * Optional: admin-only guard.
+ * Usage: router.get('/admin', verifyJwtMiddleware, requireAdmin, handler)
+ */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.user?.role?.toLowerCase();
+    if (role !== 'admin') {
+        res.status(403).json({ message: 'Forbidden: admin only' });
+        return;
+    }
+    next();
+};
+
+/**
+ * Optional: generic role guard.
+ * Usage: router.get('/something', verifyJwtMiddleware, requireRoles('manager','admin'), handler)
+ */
+export const requireRoles =
+    (...roles: string[]) =>
+        (req: Request, res: Response, next: NextFunction): void => {
+            const role = req.user?.role?.toLowerCase();
+            if (!role || !roles.map((r) => r.toLowerCase()).includes(role)) {
+                res.status(403).json({ message: 'Forbidden: insufficient role' });
+                return;
+            }
+            next();
+        };
+
+export default verifyJwtMiddleware;

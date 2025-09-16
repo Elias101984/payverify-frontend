@@ -1,33 +1,47 @@
+﻿// src/server.ts
+
+// ✅ NEW: Load environment variables as early as possible (DB creds, JWT secrets, etc.)
+import 'dotenv/config';
+
+import app from './app';
 import { sequelize, testConnection } from './config/db';
+
+// ✅ IMPORTANT: Import models so their `.init(...)` runs (Sequelize registers them)
+// These imports are intentionally kept even if not referenced directly.
 import { User } from './models/User';
 import { Merchant } from './models/Merchant';
-import app from './app';
 import Transaction from './models/Transaction';
 
-// Read PORT from environment variables or fallback to default
-const PORT = process.env.PORT || 5000;
+// ✅ NEW: Bring in models that participate in the new Bank ↔ Token relationship
+import Bank from './models/Bank';
+import BankLoginToken from './models/BankLoginToken';
+
+// ✅ NEW: Central place to wire associations (avoids circular-import timing issues)
+import { applyAssociations } from './models/associations';
+
+// Use a strict parse for port; default to 5000
+const PORT = Number(process.env.PORT) || 5000;
 
 const startServer = async () => {
     try {
-        console.log(' Attempting to connect to the database�');
+        console.log(' Attempting to connect to the database…');
         await testConnection();
         console.log(' Database connection has been established successfully.');
 
-        // Sync all models
-        await sequelize.sync({ alter: true });
-        console.log('Models synchronized with database');
+        // ✅ NEW: Apply associations AFTER all models have been imported/initialized.
+        // WHY: Prevents "Cannot read properties of undefined (reading 'Sequelize')" caused by
+        // calling belongsTo/hasMany before a peer model finishes initialization.
+        applyAssociations();
+        console.log(' Sequelize associations applied.');
 
-        // Optional: Seed sample data (DEV ONLY) � uncomment if needed
-        /*
-        const hashed = await bcrypt.hash('password123', 10);
-        const user = await User.create({ name: 'Test User', email: 'test@example.com', password: hashed });
-        const merchant = await Merchant.create({ name: 'Test Merchant', userId: user.id });
-        await Transaction.bulkCreate([
-          { amount: 100.0, status: 'completed', merchantId: merchant.id },
-          { amount: 50.0, status: 'pending', merchantId: merchant.id },
-        ]);
-        console.log(' Sample data inserted');
-        */
+        // ✅ Keep sync in development only; rely on migrations elsewhere.
+        if ((process.env.NODE_ENV || 'development') === 'development') {
+            // If you're actively changing schemas in dev, you can use { alter: true } temporarily.
+            await sequelize.sync();
+            console.log(' Models synchronized with database (development).');
+        } else {
+            console.log(' Skipping sequelize.sync() (NODE_ENV !== development).');
+        }
 
         // Start Express server
         app.listen(PORT, () => {
@@ -39,5 +53,4 @@ const startServer = async () => {
     }
 };
 
-// Start the server
 startServer();

@@ -1,0 +1,189 @@
+/* src/styles/pv-theme.css */
+
+/* --- Background wrapper: black to electric blue --- */
+.pv-dash-bg {
+    width: 100%;
+    min-height: 100vh;
+    background: radial-gradient(1200px 600px at 65% -10%, rgba(0, 102, 255, 0.30), rgba(0,0,0,0) 60%), radial-gradient(900px 450px at 20% 10%, rgba(0, 50, 160, 0.35), rgba(0,0,0,0) 55%), linear-gradient(180deg, #06070a 0%, #061024 45%, #0a1c40 65%, #0b2e75 100%);
+    box-shadow: inset 0 0 160px rgba(0,0,0,0.55);
+}
+
+/* --- Glass / glossy card base --- */
+.pv-glass-card {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    color: #e9f2ff;
+}
+
+    /* --- Subtle glossy highlight strip (top) --- */
+    .pv-glass-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 16px;
+        background: linear-gradient(to bottom, rgba(255,255,255,0.22), rgba(255,255,255,0.0) 35%);
+        pointer-events: none;
+        mix-blend-mode: screen;
+        opacity: 0.65;
+    }
+
+    /* --- Hover: lift and brighten --- */
+    .pv-glass-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.22);
+        border-color: rgba(255,255,255,0.22);
+    }
+
+/* --- Extra sheen for analytics tiles --- */
+.pv-gloss-gradient {
+    background: radial-gradient(120% 150% at 120% -20%, rgba(0, 140, 255, 0.25), rgba(0,0,0,0) 40%), linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+}
+
+/* --- Fraud tile slight warning glow --- */
+.pv-fraud {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), 0 0 32px rgba(255, 127, 39, 0.15), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+/* --- Card inner spacing & typography --- */
+.pv-card-body {
+    padding: 16px 18px;
+}
+
+.pv-tile-title {
+    font-size: 0.875rem;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    opacity: 0.85;
+    margin-bottom: 6px;
+}
+
+.pv-tile-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.pv-tile-desc {
+    margin-top: 6px;
+    font-size: 0.86rem;
+    color: rgba(233, 242, 255, 0.8);
+}
+
+/* Buttons readable on dark bg */
+.btn-outline-light {
+    border-color: rgba(255,255,255,0.35);
+    color: #e9f2ff;
+}
+
+    .btn-outline-light:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.55);
+        color: #fff;
+    }
+
+/* Keep HR visible on dark */
+hr.border-secondary {
+    border-top-color: rgba(255,255,255,0.2) !important;
+}
+
+
+/* ---- Light tints for text on dark bg (utilities) ---- */
+.text-light-90 {
+    color: rgba(233, 242, 255, 0.90) !important;
+}
+
+.text-light-75 {
+    color: rgba(233, 242, 255, 0.75) !important;
+}
+
+.text-light-60 {
+    color: rgba(233, 242, 255, 0.60) !important;
+}
+
+/* ---- Dark form controls that sit well on glass cards ---- */
+.pv-input-dark,
+.pv-select-dark {
+    background: rgba(255,255,255,0.06) !important;
+    color: #e9f2ff !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+}
+
+    .pv-input-dark::placeholder {
+        color: rgba(233,242,255,0.45);
+    }
+
+    .pv-input-dark:focus,
+    .pv-select-dark:focus {
+        border-color: rgba(255,255,255,0.35) !important;
+        box-shadow: 0 0 0 0.2rem rgba(76, 201, 240, 0.15) !important;
+    }
+
+/* ---- Dark table skin (use with .table.table-dark + .pv-table-dark) ---- */
+.pv-table-dark thead th {
+    background: rgba(255,255,255,0.06);
+    border-bottom-color: rgba(255,255,255,0.12);
+}
+
+.pv-table-dark tbody tr {
+    border-color: rgba(255,255,255,0.06);
+}
+
+    .pv-table-dark tbody tr:hover {
+        background: rgba(255,255,255,0.06);
+    }
+
+/* Glossy page header spacing/typography */
+.pv-glass-card h3 {
+    font-weight: 700;
+}
+
+/* Tighten small text tint utilities */
+.text-light-90 {
+    color: rgba(233, 242, 255, 0.90) !important;
+}
+
+.text-light-75 {
+    color: rgba(233, 242, 255, 0.75) !important;
+}
+
+.text-light-60 {
+    color: rgba(233, 242, 255, 0.60) !important;
+}
+
+/* Dark inputs/selects look good on glass cards */
+.pv-input-dark,
+.pv-select-dark {
+    background: rgba(255,255,255,0.06) !important;
+    color: #e9f2ff !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+}
+
+    .pv-input-dark::placeholder {
+        color: rgba(233,242,255,0.45);
+    }
+
+    .pv-input-dark:focus,
+    .pv-select-dark:focus {
+        border-color: rgba(255,255,255,0.35) !important;
+        box-shadow: 0 0 0 0.2rem rgba(76, 201, 240, 0.15) !important;
+    }
+
+/* Dark table */
+.pv-table-dark thead th {
+    background: rgba(255,255,255,0.06);
+    border-bottom-color: rgba(255,255,255,0.12);
+}
+
+.pv-table-dark tbody tr {
+    border-color: rgba(255,255,255,0.06);
+}
+
+    .pv-table-dark tbody tr:hover {
+        background: rgba(255,255,255,0.06);
+    }

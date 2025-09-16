@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { verifyToken } from '../middlewares/authMiddleware';
+import { verifyJwtMiddleware } from '../middlewares/authMiddleware';
 import { authorizeRoles } from '../middlewares/roleMiddleware';
 
 const router = Router();
@@ -29,7 +29,7 @@ const router = Router();
  */
 router.get(
     '/dashboard',
-    verifyToken,
+    verifyJwtMiddleware,
     authorizeRoles(['admin']),
     (req: Request, res: Response) => {
         res.json({

@@ -6,9 +6,18 @@
     "lib": [ "ES6" ],
     "moduleResolution": "node",
 
+    /* Types setup */
+    "typeRoots": [ "./node_modules/@types", "./src/types" ],
+    "types": [ "node", "jest" ],
+
+    /* Interop and Compatibility */
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
+      "@/*": [ "src/*" ],
       "controllers/*": [ "src/controllers/*" ],
       "models/*": [ "src/models/*" ],
       "middlewares/*": [ "src/middlewares/*" ],
@@ -19,27 +28,18 @@
     "rootDir": "./src",
     "outDir": "./dist",
 
-    /* Interop and Compatibility */
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-
     /* Type Checking */
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
 
     /* Debugging */
     "sourceMap": true
   },
 
   /* Files to Include */
-  "include": [
-    "src",
-    "test"
-  ],
+  "include": [ "src", "test" ],
 
   /* Files to Exclude */
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "exclude": [ "node_modules", "dist" ]
 }

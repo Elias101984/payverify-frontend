@@ -1,6 +1,6 @@
 import express from 'express';
 import { getDashboardStats } from '../controllers/dashboardController';
-import { verifyToken } from '../middlewares/authMiddleware';
+import { verifyJwtMiddleware } from '../middlewares/authMiddleware';
 
 const router = express.Router();
 
@@ -27,6 +27,6 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
-router.get('/dashboard', verifyToken, getDashboardStats);
+router.get('/dashboard', verifyJwtMiddleware, getDashboardStats);
 
 export default router;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { generateMerchantQR } from '../controllers/paymentController';
-import { verifyToken } from '../middlewares/authMiddleware';
+import { verifyJwtMiddleware } from '../middlewares/authMiddleware';
 
 const router = Router();
 
@@ -56,6 +56,6 @@ const router = Router();
  *       500:
  *         description: Internal server error
  */
-router.get('/qr', verifyToken, generateMerchantQR);
+router.get('/qr', verifyJwtMiddleware, generateMerchantQR);
 
 export default router;

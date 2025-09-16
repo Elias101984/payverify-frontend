@@ -1,37 +1,49 @@
+﻿// src/services/api.tsx
 /**
- * Axios instance for making API calls.
+ * Axios client + endpoint helpers for PayVerify frontend.
  *
- * Why: DRY & centralized configuration
+ * New (now):
+ * - Added `registerMerchant()` helper for POST /merchants using snake_case keys
+ *   that match your DB (cac_number, tin_number, bvn, bank_name, account_number, email, name).
+ *   This removes the field-name mismatch that caused 400s.
  */
 
 import axios from 'axios';
 
-const API_BASE_URL =
-    process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
-/**
- * Axios instance pre-configured for backend
- */
 export const api = axios.create({
     baseURL: API_BASE_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 20_000,
 });
 
-/**
- * Login an existing user
- */
-export const loginUser = (data: {
-    email: string;
-    password: string;
-}) => {
-    return api.post('/auth/login', data);
-};
+api.interceptors.request.use((config) => {
+    try {
+        const token = localStorage.getItem('token');
+        if (token) {
+            config.headers = config.headers ?? {};
+            (config.headers as any).Authorization = `Bearer ${token}`;
+        }
+    } catch { /* no-op */ }
+    return config;
+});
 
-/**
- * Register a new user & merchant
- */
+api.interceptors.response.use(
+    (res) => res,
+    (err) => {
+        if (err?.response?.status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+        }
+        return Promise.reject(err);
+    }
+);
+
+// ---------- Auth (existing) ----------
+export const loginUser = (data: { email: string; password: string }) =>
+    api.post('/auth/login', data);
+
 export const registerUser = (data: {
     name: string;
     email: string;
@@ -43,36 +55,64 @@ export const registerUser = (data: {
     bank_name: string;
     qr_code?: string;
     role?: string;
-}) => {
-    return api.post('/auth/register', data);
-};
+}) => api.post('/auth/register', data);
 
-/**
- * Fetch transactions
- */
-export const fetchTransactions = () => {
-    return api.get('/transactions');
-};
+// ---------- Merchant (NEW helper) ----------
+export const registerMerchant = (data: {
+    name: string;
+    cac_number: string;
+    tin_number: string;
+    bvn: string;
+    bank_name: string;
+    account_number: string;
+    email: string;
+}) => api.post('/merchants', data);
 
-/**
- * Create transaction
- */
+// ---------- Password reset (existing) ----------
+export const requestPasswordReset = (email: string) =>
+    api.post('/auth/forgot-password', { email });
+
+export const resetPassword = (token: string, password: string) =>
+    api.post('/auth/reset-password', { token, password });
+
+// ---------- Transactions / Analytics / Dashboard (existing) ----------
+export const fetchTransactions = (params?: { limit?: number; offset?: number }) =>
+    api.get('/transactions', { params });
+
 export const createTransaction = (data: {
-    merchantId: number;
+    merchantId?: number;
     amount: number;
-    status: string;
-}) => {
-    return api.post('/transactions', data);
-};
+    status: 'pending' | 'completed' | 'failed';
+}) => api.post('/transactions', data);
 
-/**
- * Fetch dashboard stats
- */
-export const fetchDashboardStats = () => {
-    return api.get('/dashboard');
-};
+export const fetchAllTransactionsAdmin = (params?: { limit?: number; offset?: number }) =>
+    api.get('/transactions/admin', { params });
 
-/**
- * Default axios instance for custom calls
- */
+export const fetchTransactionsByMerchantIdAdmin = (
+    merchantId: number,
+    params?: { limit?: number; offset?: number }
+) => api.get(`/transactions/admin/${merchantId}`, { params });
+
+export const fetchTransactionsSummary = (params?: {
+    interval?: 'day' | 'week' | 'month';
+    dateFrom?: string;
+    dateTo?: string;
+    merchantId?: number;
+}) => api.get('/analytics/transactions/summary', { params });
+
+export const fetchDashboardStats = () => api.get('/dashboard');
+
+// src/services/api.ts
+export const getRefunds = (txId: number) =>
+    api.get(`/transactions/${txId}/refunds`);
+
+export const createRefund = (txId: number, payload: { amount: number; reason?: string }) =>
+    api.post(`/transactions/${txId}/refunds`, payload);
+
+export const getDisputes = (txId: number) =>
+    api.get(`/transactions/${txId}/disputes`);
+
+export const getFraudBreakdown = () =>
+    api.get('/analytics/fraud-breakdown');
+
 export default api;
