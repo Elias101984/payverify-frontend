@@ -36,6 +36,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import InvoicePayPage from './pages/InvoicePayPage';
 import PurchaseOrderDetailsPage from './pages/PurchaseOrderDetailsPage';
+import PublicSandboxPage from "./pages/PublicSandboxPage";
 
 
 const App = () => {
@@ -91,7 +92,9 @@ const App = () => {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/merchant-created/:merchantId" element={<MerchantCreatedPage />} />
 
+                
 
+                <Route path="/sandbox" element={<PublicSandboxPage />} />
 
                 {/* =============================================================================
                    PROTECTED ROUTES

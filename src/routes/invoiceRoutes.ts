@@ -34,7 +34,8 @@
 
 import { Router } from "express";
 import { InvoiceController }  from "../controllers/InvoiceController";
-import { initializeInvoicePayment } from "../controllers/InvoicePaymentController";
+import { initializeInvoicePayment, startPayment, continuePayment } from "../controllers/InvoicePaymentController";
+
 
 const router = Router();
 const controller = new InvoiceController();
@@ -71,5 +72,9 @@ router.post(
     "/:invoiceId/paystack/initialize",
     initializeInvoicePayment
 );
+
+router.post("/:invoiceId/payments/start", startPayment);
+
+router.post("/:invoiceId/payments/continue", continuePayment);
 
 export default router;

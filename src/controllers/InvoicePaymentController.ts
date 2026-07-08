@@ -1,308 +1,31 @@
-﻿//// =============================================================================
-//// InvoicePaymentController.ts (FINAL — MODEL ALIGNED + TS CLEAN)
-//// =============================================================================
-//// PURPOSE:
-//// - Initialize Paystack payment for an invoice
-//// - Handle Paystack webhook securely
-////
-//// WHAT WAS FIXED IN THIS VERSION:
-//// ✅ Uses real Invoice fields (amount, status)
-//// ✅ Uses real Payment fields
-//// ✅ Removed non-existent columns
-//// ✅ Fixed enum mismatch (initiated vs initialized)
-//// ✅ Removed unsafe metadata usage
-//// ✅ Added safe invoiceId extraction from reference
-//// ✅ All TypeScript errors resolved
-////
-//// IMPORTANT DESIGN NOTE:
-//// Your Payment model is transaction-based, so currently:
-//// - invoice.id → transactionId (temporary mapping)
-//// - bankAccountId uses placeholder until merchant wiring
-////
-//// =============================================================================
-
-//import { Request, Response } from "express";
-//import crypto from "crypto";
-
-//import { PaystackService } from "../services/PaystackService";
-//import { Invoice } from "../models/Invoice";
-//import Payment from "../models/Payment";
-
-//const paystack = new PaystackService();
-
-//// =============================================================================
-//// Helpers
-//// =============================================================================
-
-///**
-// * Builds deterministic Paystack reference
-// * Format: INV_<invoiceId>_<timestamp>
-// */
-//function buildReference(invoiceId: number): string {
-//    return `INV_${invoiceId}_${Date.now()}`;
-//}
-
-///**
-// * Verify Paystack webhook signature
-// */
-//function verifyPaystackSignature(rawBody: Buffer, signature?: string): boolean {
-//    const secret = process.env.PAYSTACK_SECRET_KEY || "";
-//    if (!signature || !secret) return false;
-
-//    const hash = crypto
-//        .createHmac("sha512", secret)
-//        .update(rawBody)
-//        .digest("hex");
-
-//    return hash === signature;
-//}
-
-///**
-// * Extract invoiceId from Paystack reference
-// * SAFER than relying on metadata (which may not exist)
-// *
-// * Example reference:
-// * INV_123_1700000000 → returns 123
-// */
-//function extractInvoiceId(reference: string): number | null {
-//    try {
-//        const parts = reference.split("_");
-//        const id = Number(parts[1]);
-//        return Number.isFinite(id) ? id : null;
-//    } catch {
-//        return null;
-//    }
-//}
-
-//// =============================================================================
-//// 1️⃣ Initialize Paystack payment for invoice
-//// POST /api/invoices/:invoiceId/paystack/initialize
-//// =============================================================================
-//export const initializeInvoicePayment = async (
-//    req: Request,
-//    res: Response
-//) => {
-//    try {
-//        const invoiceId = Number(req.params.invoiceId);
-
-//        // ---------------------------------------------------------------------
-//        // Load invoice
-//        // ---------------------------------------------------------------------
-//        const invoice = await Invoice.findByPk(invoiceId);
-
-//        if (!invoice) {
-//            return res.status(404).json({
-//                success: false,
-//                message: "Invoice not found",
-//            });
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // Prevent paying already-paid invoice
-//        // FIXED: uses real Invoice.status
-//        // ---------------------------------------------------------------------
-//        if (invoice.status === "paid") {
-//            return res.status(409).json({
-//                success: false,
-//                message: "Invoice already paid",
-//            });
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // Invoice model has no email — must come from request
-//        // ---------------------------------------------------------------------
-//        const customerEmail = req.body.email;
-
-//        if (!customerEmail) {
-//            return res.status(400).json({
-//                success: false,
-//                message: "Customer email is required",
-//            });
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // FIXED: use real Invoice.amount
-//        // ---------------------------------------------------------------------
-//        const amountNaira = Number(invoice.amount);
-
-//        if (!amountNaira || amountNaira <= 0) {
-//            return res.status(400).json({
-//                success: false,
-//                message: "Invalid invoice amount",
-//            });
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // Build unique reference
-//        // ---------------------------------------------------------------------
-//        const reference = buildReference(invoiceId);
-
-//        // ---------------------------------------------------------------------
-//        // Create payment attempt
-//        //
-//        // FIXES:
-//        // - status must be 'initiated'
-//        // - model requires transactionId & bankAccountId
-//        // ---------------------------------------------------------------------
-//        await Payment.create({
-//            transactionId: invoice.id, // TEMP mapping (see notes)
-//            bankAccountId: 1, // TODO: replace with merchant bank account
-//            amount: amountNaira,
-//            method: "paystack",
-//            status: "initiated",
-//        });
-
-//        // ---------------------------------------------------------------------
-//        // Update invoice to processing
-//        // ---------------------------------------------------------------------
-//        await invoice.update({
-//            status: "processing",
-//        });
-
-//        // ---------------------------------------------------------------------
-//        // Initialize Paystack
-//        // ---------------------------------------------------------------------
-//        const callbackUrl = `${process.env.FRONTEND_URL}/invoices/${invoiceId}/paid`;
-
-//        const response = await paystack.initializePayment({
-//            email: customerEmail,
-//            amountNaira,
-//            reference,
-//            callback_url: callbackUrl,
-//            metadata: {
-//                invoiceId,
-//                source: "payverify_invoice",
-//            },
-//        });
-
-//        return res.json({
-//            success: true,
-//            reference,
-//            authorization_url: response.data.authorization_url,
-//            access_code: response.data.access_code,
-//        });
-//    } catch (error: any) {
-//        console.error(
-//            "initializeInvoicePayment error:",
-//            error?.response?.data || error
-//        );
-
-//        return res.status(500).json({
-//            success: false,
-//            message: "Unable to initialize payment",
-//        });
-//    }
-//};
-
-//// =============================================================================
-//// 2️⃣ Paystack Webhook Handler
-//// POST /api/webhooks/paystack
-////
-//// IMPORTANT:
-//// Must use express.raw({ type: 'application/json' })
-//// =============================================================================
-//export const handlePaystackWebhook = async (
-//    req: any,
-//    res: Response
-//) => {
-//    try {
-//        const signature = req.headers["x-paystack-signature"];
-//        const rawBody: Buffer = req.body;
-
-//        // ---------------------------------------------------------------------
-//        // Verify webhook signature
-//        // ---------------------------------------------------------------------
-//        const isValid = verifyPaystackSignature(rawBody, signature);
-
-//        if (!isValid) {
-//            return res.sendStatus(401);
-//        }
-
-//        const event = JSON.parse(rawBody.toString("utf8"));
-
-//        // ---------------------------------------------------------------------
-//        // Only process successful charges
-//        // ---------------------------------------------------------------------
-//        if (event.event !== "charge.success") {
-//            return res.sendStatus(200);
-//        }
-
-//        const reference = event?.data?.reference;
-//        if (!reference) {
-//            return res.sendStatus(200);
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // Elite safety: verify directly with Paystack
-//        // ---------------------------------------------------------------------
-//        const verify = await paystack.verifyTransaction(reference);
-
-//        if (verify.data.status !== "success") {
-//            return res.sendStatus(200);
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // Update latest initiated Paystack payment
-//        // NOTE:
-//        // Your Payment model currently has no reference column,
-//        // so we update the most recent initiated payment.
-//        // (Can be upgraded later.)
-//        // ---------------------------------------------------------------------
-//        const payment = await Payment.findOne({
-//            where: {
-//                method: "paystack",
-//                status: "initiated",
-//            },
-//            order: [["createdAt", "DESC"]],
-//        });
-
-//        if (payment) {
-//            await payment.update({
-//                status: "success",
-//            });
-//        }
-
-//        // ---------------------------------------------------------------------
-//        // SAFELY extract invoiceId from reference
-//        // (FIXED — no metadata dependency)
-//        // ---------------------------------------------------------------------
-//        const invoiceId = extractInvoiceId(reference);
-
-//        if (invoiceId) {
-//            const invoice = await Invoice.findByPk(invoiceId);
-
-//            if (invoice && invoice.status !== "paid") {
-//                await invoice.update({
-//                    status: "paid",
-//                });
-//            }
-//        }
-
-//        return res.sendStatus(200);
-//    } catch (error) {
-//        console.error("handlePaystackWebhook error:", error);
-//        return res.sendStatus(500);
-//    }
-//};
-
-
-
+﻿// =============================================================================
+// InvoicePaymentController.ts (V2 — VERIFICATION-FIRST PAYMENT FLOW)
 // =============================================================================
-// InvoicePaymentController.ts (FULLY HARDENED — PAYVERIFY ELITE)
-// =============================================================================
-// PURPOSE:
-// - Initialize Paystack payment for an invoice
-// - Securely process Paystack webhooks
 //
-// HARDENING INCLUDED:
-// ✅ Signature verification
-// ✅ Duplicate webhook protection
-// ✅ Idempotent payment updates
-// ✅ Handles charge.success
-// ✅ Handles charge.failed
-// ✅ Email notifications (success + failure)
-// ✅ Safe invoice extraction from reference
-// ✅ Race-condition resistant
+// PURPOSE
+// -----------------------------------------------------------------------------
+// Handles invoice payment flows and Paystack webhooks.
+//
+// WHAT CHANGED
+// -----------------------------------------------------------------------------
+// ✅ Kept legacy initializeInvoicePayment() so existing working flows do not break.
+// ✅ Added startPayment() for the new verification-first flow.
+// ✅ Added continuePayment() for Paystack initialization after user acknowledgment.
+// ✅ Moved Paystack initialization logic for the V2 flow into PaymentInitializationService.
+// ✅ Kept the existing hardened Paystack webhook logic intact.
+//
+// WHY
+// -----------------------------------------------------------------------------
+// The old endpoint verified the merchant and initialized Paystack in the same
+// request. That caused the frontend to redirect to Paystack before showing the
+// PayVerify verification modal.
+//
+// The new V2 flow is:
+// 1) POST /api/invoices/:invoiceId/payments/start
+// 2) Frontend shows VerificationModal
+// 3) POST /api/invoices/:invoiceId/payments/continue
+// 4) Paystack webhook marks invoice paid
+//
 // =============================================================================
 
 import { Request, Response } from "express";
@@ -312,11 +35,20 @@ import { PaystackService } from "../services/PaystackService";
 import { Invoice } from "../models/Invoice";
 import Payment from "../models/Payment";
 import Transaction from "../models/Transaction";
+import VerificationGatewayService from "../services/VerificationGatewayService";
+import { PaymentInitializationService } from "../services/PaymentInitializationService";
 
 import {
-    sendInvoicePaidEmail,sendPaymentFailedEmail,} from "../services/_emailService";
+    sendInvoicePaidEmail,
+    sendPaymentFailedEmail,
+} from "../services/_emailService";
 
 const paystack = new PaystackService();
+
+const verificationGateway = new VerificationGatewayService();
+
+const paymentInitializationService =
+    new PaymentInitializationService();
 
 // =============================================================================
 // Helpers
@@ -331,7 +63,10 @@ function verifyPaystackSignature(
     signature?: string
 ): boolean {
     const secret = process.env.PAYSTACK_SECRET_KEY || "";
-    if (!signature || !secret) return false;
+
+    if (!signature || !secret) {
+        return false;
+    }
 
     const hash = crypto
         .createHmac("sha512", secret)
@@ -341,14 +76,11 @@ function verifyPaystackSignature(
     return hash === signature;
 }
 
-/**
- * Extract invoiceId safely from reference
- * Format: INV_<invoiceId>_<timestamp>
- */
 function extractInvoiceId(reference: string): number | null {
     try {
         const parts = reference.split("_");
         const id = Number(parts[1]);
+
         return Number.isFinite(id) ? id : null;
     } catch {
         return null;
@@ -356,9 +88,16 @@ function extractInvoiceId(reference: string): number | null {
 }
 
 // =============================================================================
-// 1️⃣ Initialize Paystack payment
+// LEGACY PAYMENT INITIALIZATION
 // POST /api/invoices/:invoiceId/paystack/initialize
+//
+// WHY THIS STILL EXISTS
+// -----------------------------------------------------------------------------
+// This is the original working endpoint. We are keeping it temporarily so that
+// existing flows do not break while the new verification-first V2 flow is tested.
+// Once V2 is stable, this endpoint can be deprecated.
 // =============================================================================
+
 export const initializeInvoicePayment = async (
     req: Request,
     res: Response
@@ -382,8 +121,6 @@ export const initializeInvoicePayment = async (
             });
         }
 
-        //const customerEmail = req.body.email;
-
         const customerEmail =
             req.body?.email ||
             invoice?.customer_email ||
@@ -405,9 +142,28 @@ export const initializeInvoicePayment = async (
             });
         }
 
-        // ---------------------------------------------------------------------
-        // Persist customer email (for receipts)
-        // ---------------------------------------------------------------------
+        let verification;
+
+        try {
+            verification = await verificationGateway.verifyMerchant({
+                merchantId: invoice.merchant_id,
+            });
+        } catch (error) {
+            console.error("Verification API unavailable:", error);
+
+            return res.status(503).json({
+                success: false,
+                message: "Verification service is currently unavailable.",
+            });
+        }
+
+        if (!verification.verified) {
+            return res.status(400).json({
+                success: false,
+                message: "Merchant verification failed.",
+            });
+        }
+
         await invoice.update({
             customer_email: customerEmail,
             status: "processing",
@@ -415,39 +171,23 @@ export const initializeInvoicePayment = async (
 
         const reference = buildReference(invoiceId);
 
-        // ---------------------------------------------------------------------
-        // Create payment attempt (idempotent safe)
-        // ---------------------------------------------------------------------
-        //await Payment.create({
-        //    transactionId: invoice.id, // temporary mapping
-        //    bankAccountId: null, // TODO: replace with merchant account
-        //    amount: amountNaira,
-        //    method: "paystack",
-        //    status: "initiated",
-        //});
-
-        // ==========================================
-        // FIX: Create Transaction FIRST
-        // ==========================================
         const transaction = await Transaction.create({
             amount: amountNaira,
             status: "pending",
-            merchantId: invoice.merchant_id, // ensure this exists
-            reference: reference
+            merchantId: invoice.merchant_id,
+            reference,
         });
 
-        // ==========================================
-        // FIX: Now create Payment with valid FK
-        // ==========================================
         await Payment.create({
-            transactionId: transaction.id, // ✅ VALID FK
+            transactionId: transaction.id,
             bankAccountId: null,
             amount: amountNaira,
             method: "paystack",
             status: "initiated",
         });
 
-        const callbackUrl = `${process.env.FRONTEND_URL}/invoice/pay/${invoiceId}`;
+        const callbackUrl =
+            `${process.env.FRONTEND_URL}/invoice/pay/${invoiceId}`;
 
         const response = await paystack.initializePayment({
             email: customerEmail,
@@ -465,6 +205,14 @@ export const initializeInvoicePayment = async (
             reference,
             authorization_url: response.data.authorization_url,
             access_code: response.data.access_code,
+            verification: {
+                verified: verification.verified,
+                merchantId: verification.merchantId,
+                merchantName: verification.merchantName,
+                trustScore: verification.trustScore,
+                verificationBadge: verification.verificationBadge,
+                verificationCount: verification.verificationCount,
+            },
         });
     } catch (error: any) {
         console.error(
@@ -480,9 +228,203 @@ export const initializeInvoicePayment = async (
 };
 
 // =============================================================================
-// 2️⃣ FULLY HARDENED PAYSTACK WEBHOOK
+// START PAYMENT (V2)
+// POST /api/invoices/:invoiceId/payments/start
+//
+// PURPOSE
+// -----------------------------------------------------------------------------
+// Verify merchant only. Does NOT initialize Paystack.
+// =============================================================================
+
+export const startPayment = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const invoiceId = Number(req.params.invoiceId);
+
+        if (!invoiceId || Number.isNaN(invoiceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid invoiceId is required.",
+            });
+        }
+
+        const invoice = await Invoice.findByPk(invoiceId);
+
+        if (!invoice) {
+            return res.status(404).json({
+                success: false,
+                message: "Invoice not found.",
+            });
+        }
+
+        if (invoice.status === "paid") {
+            return res.status(409).json({
+                success: false,
+                message: "Invoice already paid.",
+            });
+        }
+
+        const customerEmail =
+            String(req.body?.email || invoice.customer_email || "").trim();
+
+        if (!customerEmail) {
+            return res.status(400).json({
+                success: false,
+                message: "Customer email is required.",
+            });
+        }
+
+        const amountNaira = Number(invoice.amount);
+
+        if (!amountNaira || amountNaira <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid invoice amount.",
+            });
+        }
+
+        let verification;
+
+        try {
+            console.log("Calling Verification API:", {
+                merchantId: invoice.merchant_id,
+            });
+
+            verification = await verificationGateway.verifyMerchant({
+                merchantId: invoice.merchant_id,
+            });
+
+            console.log("Verification Response:", verification);
+        } catch (error) {
+            console.error("Verification API unavailable:", error);
+
+            return res.status(503).json({
+                success: false,
+                message: "Verification API unavailable.",
+            });
+        }
+
+        return res.json({
+            verified: verification.verified,
+
+            status: verification.verified
+                ? "VERIFIED"
+                : "NOT_VERIFIED",
+
+            trustSessionId: crypto.randomUUID(),
+
+            verificationId: crypto.randomUUID(),
+
+            reasonCode: verification.reasonCode,
+
+            message:
+                verification.message ||
+                "Merchant verification completed.",
+
+            // ==========================================================
+            // Flattened verification payload
+            // ==========================================================
+            merchantName: verification.merchantName,
+
+            bankName: verification.bankName,
+
+            accountName: verification.accountName,
+
+            accountNumberMasked: verification.accountNumberMasked,
+
+            trustScore: verification.trustScore,
+
+            verificationStatus: verification.verificationStatus,
+
+            verificationCount: verification.verificationCount,
+
+            verificationBadge: verification.verificationBadge,
+        });
+    } catch (error) {
+        console.error("startPayment error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to start payment.",
+        });
+    }
+};
+
+// =============================================================================
+// CONTINUE PAYMENT (V2)
+// POST /api/invoices/:invoiceId/payments/continue
+//
+// PURPOSE
+// -----------------------------------------------------------------------------
+// Initialize Paystack after user reviews and acknowledges verification details.
+// =============================================================================
+
+export const continuePayment = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const invoiceId = Number(req.params.invoiceId);
+
+        if (!invoiceId || Number.isNaN(invoiceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid invoiceId is required.",
+            });
+        }
+
+        const email = String(req.body?.email || "").trim();
+
+        const trustSessionId =
+            String(req.body?.trustSessionId || "").trim();
+
+        const verificationId =
+            String(req.body?.verificationId || "").trim();
+
+        const acknowledgedUnverified =
+            Boolean(req.body?.acknowledgedUnverified);
+
+        if (!email || !trustSessionId || !verificationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing verification information.",
+            });
+        }
+
+        console.log("Continuing invoice payment:", {
+            invoiceId,
+            email,
+            trustSessionId,
+            verificationId,
+            acknowledgedUnverified,
+        });
+
+        const result =
+            await paymentInitializationService.initializeInvoicePayment({
+                invoiceId,
+                email,
+            });
+
+        return res.json(result);
+    } catch (error: any) {
+        console.error("continuePayment error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message:
+                error.message ||
+                "Unable to continue payment.",
+        });
+    }
+};
+
+// =============================================================================
+// PAYSTACK WEBHOOK
 // POST /api/webhooks/paystack
 // =============================================================================
+
 export const handlePaystackWebhook = async (
     req: any,
     res: Response
@@ -491,9 +433,6 @@ export const handlePaystackWebhook = async (
         const signature = req.headers["x-paystack-signature"];
         const rawBody: Buffer = req.body;
 
-        // ---------------------------------------------------------------------
-        // 🔐 Verify signature
-        // ---------------------------------------------------------------------
         const isValid = verifyPaystackSignature(rawBody, signature);
 
         if (!isValid) {
@@ -508,26 +447,26 @@ export const handlePaystackWebhook = async (
             return res.sendStatus(200);
         }
 
-        // ---------------------------------------------------------------------
-        // 🆕 HANDLE FAILED PAYMENTS FIRST
-        // ---------------------------------------------------------------------
         if (event.event === "charge.failed") {
             const invoiceId = extractInvoiceId(reference);
 
             if (invoiceId) {
                 const invoice = await Invoice.findByPk(invoiceId);
 
-                // Update latest initiated payment → failed
                 const payment = await Payment.findOne({
-                    where: { method: "paystack", status: "initiated" },
+                    where: {
+                        method: "paystack",
+                        status: "initiated",
+                    },
                     order: [["createdAt", "DESC"]],
                 });
 
                 if (payment) {
-                    await payment.update({ status: "failed" });
+                    await payment.update({
+                        status: "failed",
+                    });
                 }
 
-                // Send failure email
                 if (invoice && invoice.customer_email) {
                     await sendPaymentFailedEmail(
                         invoice.customer_email,
@@ -540,48 +479,39 @@ export const handlePaystackWebhook = async (
             return res.sendStatus(200);
         }
 
-        // ---------------------------------------------------------------------
-        // Ignore non-success events
-        // ---------------------------------------------------------------------
         if (event.event !== "charge.success") {
             return res.sendStatus(200);
         }
 
-        // ---------------------------------------------------------------------
-        // 🔍 Verify with Paystack (anti-fraud)
-        // ---------------------------------------------------------------------
         const verify = await paystack.verifyTransaction(reference);
 
         if (verify.data.status !== "success") {
             return res.sendStatus(200);
         }
 
-        // ---------------------------------------------------------------------
-        // 🔁 Idempotent payment update
-        // ---------------------------------------------------------------------
         const payment = await Payment.findOne({
-            where: { method: "paystack" },
+            where: {
+                method: "paystack",
+            },
             order: [["createdAt", "DESC"]],
         });
 
         if (payment && payment.status !== "success") {
-            await payment.update({ status: "success" });
+            await payment.update({
+                status: "success",
+            });
         }
 
-        // ---------------------------------------------------------------------
-        // 🧾 Update invoice safely
-        // ---------------------------------------------------------------------
         const invoiceId = extractInvoiceId(reference);
 
         if (invoiceId) {
             const invoice = await Invoice.findByPk(invoiceId);
 
             if (invoice && invoice.status !== "paid") {
-                await invoice.update({ status: "paid" });
+                await invoice.update({
+                    status: "paid",
+                });
 
-                // -----------------------------------------------------------------
-                // 📧 Send success email (idempotent safe)
-                // -----------------------------------------------------------------
                 if (invoice.customer_email) {
                     await sendInvoicePaidEmail(
                         invoice.customer_email,
@@ -596,6 +526,7 @@ export const handlePaystackWebhook = async (
         return res.sendStatus(200);
     } catch (error) {
         console.error("handlePaystackWebhook error:", error);
+
         return res.sendStatus(500);
     }
 };
