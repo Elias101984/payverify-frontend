@@ -2,44 +2,74 @@
 // -----------------------------------------------------------------------------
 // PayVerify Bank Authentication Middleware
 //
-// TYPESCRIPT / RENDER BUILD FIX
-// -----------------------------------------------------------------------------
+// CHANGES APPLIED:
 //
-// WHAT CHANGED:
+// 1. REMOVED GLOBAL EXPRESS MODULE AUGMENTATION
+//    ---------------------------------------------------------
+//    Removed:
 //
-// 1. REMOVED:
-//      declare module 'express-serve-static-core'
+//      declare module 'express-serve-static-core' { ... }
 //
 //    WHY:
-//    The Render TypeScript build could not resolve that module augmentation:
+//    Render's TypeScript build previously failed with:
 //
 //      TS2664: Invalid module name in augmentation,
 //      module 'express-serve-static-core' cannot be found.
 //
-// 2. ADDED:
-//      BankAuthenticatedRequest extends Request
+//    We now use a local BankAuthenticatedRequest interface instead.
+//
+//
+// 2. ADDED IncomingHttpHeaders
+//    ---------------------------------------------------------
+//    Added:
+//
+//      import { IncomingHttpHeaders } from 'http';
+//
+//    and:
+//
+//      headers: IncomingHttpHeaders;
 //
 //    WHY:
-//    This gives this middleware a properly typed `req.bank` property without
-//    globally augmenting Express.
+//    Render's TypeScript build reported:
 //
-// 3. The middleware now uses:
-//      req: BankAuthenticatedRequest
+//      TS2339: Property 'headers' does not exist on type
+//      'BankAuthenticatedRequest'.
 //
-//    Because BankAuthenticatedRequest extends Express Request, it inherits:
+//    Express Request normally provides `headers`, but the Render build was not
+//    recognizing the inherited property on our custom request interface.
+//    We therefore explicitly declare it.
 //
-//      req.headers
-//      req.body
-//      req.params
-//      req.query
 //
-//    while also adding:
+// 3. KEPT BankAuthenticatedRequest EXTENDING Express Request
+//    ---------------------------------------------------------
+//    This preserves normal Express request functionality while adding:
 //
 //      req.bank
 //
-// 4. NO authentication behavior was changed.
-//    JWT verification, bank lookup, Active status validation, and req.bank
-//    population all remain functionally the same.
+//    for authenticated bank information.
+//
+//
+// 4. IMPROVED BEARER TOKEN VALIDATION
+//    ---------------------------------------------------------
+//    Instead of accepting any two-part Authorization header, we explicitly
+//    require:
+//
+//      Authorization: Bearer <token>
+//
+//
+// 5. NO BUSINESS LOGIC CHANGED
+//    ---------------------------------------------------------
+//    The middleware still:
+//
+//      - Reads the Authorization header
+//      - Verifies the JWT
+//      - Requires role === "bank"
+//      - Supports bankId or id from the JWT
+//      - Loads the bank from the database
+//      - Requires Active bank status
+//      - Attaches the bank context to req.bank
+//      - Calls next()
+//
 // -----------------------------------------------------------------------------
 
 import {
@@ -48,6 +78,7 @@ import {
     NextFunction,
 } from 'express';
 
+import { IncomingHttpHeaders } from 'http';
 import jwt from 'jsonwebtoken';
 import Bank from '../models/Bank';
 
@@ -56,14 +87,11 @@ import Bank from '../models/Bank';
 // BANK REQUEST CONTEXT
 // =============================================================================
 //
-// Shape attached to req.bank after successful authentication.
+// Defines the authenticated bank information that will be attached to:
 //
-// Downstream handlers can access:
+//     req.bank
 //
-// req.bank.id
-// req.bank.contactEmail
-// req.bank.bankName
-// req.bank.status
+// after successful authentication.
 // =============================================================================
 
 export type BankRequestContext = {
@@ -78,23 +106,70 @@ export type BankRequestContext = {
 // BANK AUTHENTICATED REQUEST
 // =============================================================================
 //
-// Instead of globally augmenting:
+// WHAT CHANGED:
+//
+// We use a local interface instead of globally augmenting:
 //
 //     express-serve-static-core
 //
-// we extend Express Request locally.
+// WHY:
 //
-// This avoids the Render TS2664 module augmentation error while preserving
-// all normal Express Request properties.
+// Render previously failed to resolve that module augmentation.
+//
+// We also explicitly declare:
+//
+//     headers: IncomingHttpHeaders
+//
+// because Render's TypeScript build was not recognizing the inherited
+// `headers` property on BankAuthenticatedRequest.
+//
+// This interface therefore provides:
+//
+//     req.headers
+//     req.body
+//     req.params
+//     req.query
+//     req.bank
+//
 // =============================================================================
 
 export interface BankAuthenticatedRequest extends Request {
+
+    /**
+     * Authenticated bank information.
+     *
+     * This is populated only after the JWT has been successfully verified
+     * and the corresponding bank has been loaded from the database.
+     */
     bank?: BankRequestContext;
+
+
+    /**
+     * RENDER / TYPESCRIPT BUILD FIX
+     *
+     * Express Request normally inherits HTTP headers from Node's HTTP request
+     * types. The Render TypeScript build was not recognizing that inherited
+     * property on this custom interface.
+     *
+     * Explicitly declaring it fixes:
+     *
+     * TS2339:
+     * Property 'headers' does not exist on type 'BankAuthenticatedRequest'.
+     */
+    headers: IncomingHttpHeaders;
 }
 
 
 // =============================================================================
 // JWT SECRET
+// =============================================================================
+//
+// Supports the existing bank-specific JWT secret first.
+//
+// Falls back to the general JWT_SECRET.
+//
+// The development fallback is preserved from the existing implementation.
+// For production, AUTH_JWT_SECRET or JWT_SECRET should always be configured.
 // =============================================================================
 
 const JWT_SECRET =
@@ -114,24 +189,31 @@ const JWT_SECRET =
  * Authentication flow:
  *
  * 1. Reads:
+ *
  *      Authorization: Bearer <jwt>
  *
  * 2. Verifies the JWT.
  *
  * 3. Requires:
+ *
  *      role === "bank"
  *
- * 4. Reads:
+ * 4. Reads the bank identifier from either:
+ *
  *      bankId
- *         OR
+ *
+ *    or:
+ *
  *      id
  *
  * 5. Loads the bank from the database.
  *
  * 6. Requires the bank status to be:
+ *
  *      Active
  *
- * 7. Attaches the bank context to:
+ * 7. Attaches the authenticated bank context to:
+ *
  *      req.bank
  *
  * 8. Continues to the next middleware/controller.
@@ -144,25 +226,39 @@ export async function isAuthenticatedBank(
 
     try {
 
-        // ---------------------------------------------------------------------
-        // Read Authorization header.
+        // =====================================================================
+        // STEP 1: READ AUTHORIZATION HEADER
+        // =====================================================================
         //
-        // Because BankAuthenticatedRequest extends Express Request,
-        // req.headers is correctly available and typed.
-        // ---------------------------------------------------------------------
+        // Expected:
+        //
+        // Authorization: Bearer <jwt>
+        //
+        // `headers` is explicitly declared on BankAuthenticatedRequest to
+        // prevent the Render TypeScript build error.
+        // =====================================================================
 
         const authHeader = req.headers.authorization || '';
 
-        // Expected format:
-        //
-        // Authorization: Bearer <token>
+
+        // =====================================================================
+        // STEP 2: EXTRACT BEARER TOKEN
+        // =====================================================================
 
         const [scheme, token] = authHeader.split(' ');
 
 
-        // ---------------------------------------------------------------------
-        // Validate Bearer token
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 3: VALIDATE AUTHORIZATION FORMAT
+        // =====================================================================
+        //
+        // Reject requests that:
+        //
+        // - Have no Authorization header
+        // - Do not use the Bearer scheme
+        // - Do not contain a JWT
+        //
+        // =====================================================================
 
         if (
             scheme !== 'Bearer' ||
@@ -170,16 +266,16 @@ export async function isAuthenticatedBank(
         ) {
 
             res.status(401).json({
-                message: 'Missing Authorization token',
+                message: 'Missing or invalid Authorization token',
             });
 
             return;
         }
 
 
-        // ---------------------------------------------------------------------
-        // Verify JWT
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 4: VERIFY JWT
+        // =====================================================================
 
         const decoded = jwt.verify(
             token,
@@ -194,9 +290,13 @@ export async function isAuthenticatedBank(
             | string;
 
 
-        // ---------------------------------------------------------------------
-        // Reject string JWT payloads
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 5: VALIDATE JWT PAYLOAD
+        // =====================================================================
+        //
+        // jsonwebtoken may technically return a string payload.
+        // PayVerify requires an object containing bank identity information.
+        // =====================================================================
 
         if (typeof decoded === 'string') {
 
@@ -208,9 +308,9 @@ export async function isAuthenticatedBank(
         }
 
 
-        // ---------------------------------------------------------------------
-        // Require a bank JWT
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 6: REQUIRE BANK ROLE
+        // =====================================================================
 
         if (decoded.role !== 'bank') {
 
@@ -222,9 +322,19 @@ export async function isAuthenticatedBank(
         }
 
 
-        // ---------------------------------------------------------------------
-        // Support either bankId or id in existing JWT payloads
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 7: GET BANK ID
+        // =====================================================================
+        //
+        // Supports both existing JWT payload formats:
+        //
+        //     { bankId: 123 }
+        //
+        // and:
+        //
+        //     { id: 123 }
+        //
+        // =====================================================================
 
         const bankId =
             decoded.bankId ??
@@ -241,9 +351,9 @@ export async function isAuthenticatedBank(
         }
 
 
-        // ---------------------------------------------------------------------
-        // Load bank from database
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 8: LOAD BANK FROM DATABASE
+        // =====================================================================
 
         const bank = await Bank.findByPk(bankId);
 
@@ -258,9 +368,12 @@ export async function isAuthenticatedBank(
         }
 
 
-        // ---------------------------------------------------------------------
-        // Only Active banks may access protected bank routes
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // STEP 9: REQUIRE ACTIVE BANK STATUS
+        // =====================================================================
+        //
+        // Pending or rejected banks cannot access protected bank routes.
+        // =====================================================================
 
         if (bank.status !== 'Active') {
 
@@ -272,17 +385,29 @@ export async function isAuthenticatedBank(
         }
 
 
-        // ---------------------------------------------------------------------
-        // Attach authenticated bank context to the request.
+        // =====================================================================
+        // STEP 10: ATTACH AUTHENTICATED BANK TO REQUEST
+        // =====================================================================
         //
-        // The local BankAuthenticatedRequest interface makes this type-safe
-        // without global Express module augmentation.
-        // ---------------------------------------------------------------------
+        // Downstream controllers can now access:
+        //
+        //     req.bank.id
+        //     req.bank.contactEmail
+        //     req.bank.bankName
+        //     req.bank.status
+        //
+        // =====================================================================
 
         req.bank = {
+
             id: bank.id,
-            contactEmail: bank.contactEmail,
-            bankName: bank.bankName,
+
+            contactEmail:
+                bank.contactEmail,
+
+            bankName:
+                bank.bankName,
+
             status:
                 bank.status as
                 | 'Pending'
@@ -291,29 +416,50 @@ export async function isAuthenticatedBank(
         };
 
 
-        // Continue request pipeline
+        // =====================================================================
+        // STEP 11: CONTINUE REQUEST PIPELINE
+        // =====================================================================
+
         next();
 
     } catch (err: any) {
 
-        // ---------------------------------------------------------------------
-        // Normalize JWT authentication errors
-        // ---------------------------------------------------------------------
+        // =====================================================================
+        // JWT / AUTHENTICATION ERROR HANDLING
+        // =====================================================================
 
         const statusCode =
+
             err?.name === 'TokenExpiredError'
                 ? 401
+
                 : err?.name === 'JsonWebTokenError'
                     ? 401
+
                     : 500;
 
 
         const message =
+
             err?.name === 'TokenExpiredError'
                 ? 'Token expired'
+
                 : err?.name === 'JsonWebTokenError'
                     ? 'Invalid token'
+
                     : 'Failed to authenticate bank';
+
+
+        // Log unexpected server-side authentication failures.
+        //
+        // We avoid logging the JWT itself.
+        if (statusCode === 500) {
+
+            console.error(
+                'Bank authentication failed:',
+                err
+            );
+        }
 
 
         res.status(statusCode).json({
@@ -324,5 +470,9 @@ export async function isAuthenticatedBank(
     }
 }
 
+
+// =============================================================================
+// DEFAULT EXPORT
+// =============================================================================
 
 export default isAuthenticatedBank;
