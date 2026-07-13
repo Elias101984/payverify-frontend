@@ -1,6 +1,8 @@
 ﻿// src/pages/DashboardPage.tsx
 // -------------------------------------------------------------------------------------------------
 // PayVerify Dashboard (Dark Gloss / Glass Theme) + Merchants Tile (Modal) + Purchase Orders
+// UPDATED: Added a Verification Sandbox dashboard tile.
+// WHY: Gives authenticated PayVerify users a direct entry point to the public account-verification demo.
 // -------------------------------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -713,6 +715,48 @@ const DashboardPage = () => {
                                 </div>
                             </button>
                         </div>
+
+                        {/* =============================================================================
+                            ADDED: Verification Sandbox tile
+
+                            WHAT CHANGED:
+                            - Added a new dashboard tile that navigates to /public-sandbox.
+                            - Reuses the existing useNavigate() hook already configured in this component.
+                            - Uses the same glass/gloss classes as the other dashboard tiles for visual consistency.
+
+                            WHY:
+                            - Gives authenticated PayVerify users a clear, direct way to launch the
+                              account-verification sandbox from the main dashboard.
+                            - The sandbox remains a public route, so it can also be exposed separately
+                              from the landing page for prospects, banks, gateways, and demos.
+                           ============================================================================= */}
+                        <div className="col-md-3 mb-3">
+                            <button
+                                type="button"
+                                className="pv-gloss-gradient pv-glass-card pv-sandbox-tile w-100 text-start"
+                                onClick={() => navigate('/public-sandbox')}
+                                aria-label="Launch PayVerify verification sandbox"
+                            >
+                                <div className="pv-card-body">
+                                    <div className="d-flex justify-content-between align-items-start gap-3">
+                                        <div>
+                                            <div className="pv-tile-title">Verification Sandbox</div>
+                                            <div className="pv-tile-value">Test Verification</div>
+                                        </div>
+
+                                        <span className="pv-sandbox-badge">LIVE</span>
+                                    </div>
+
+                                    <div className="pv-tile-desc">
+                                        Verify a merchant using bank and account number.
+                                    </div>
+
+                                    <div className="pv-sandbox-link">
+                                        Launch Sandbox <span aria-hidden="true">→</span>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
                     </div>
 
                     {/* Recent Purchase Orders Section */}
@@ -944,6 +988,50 @@ const StyleBlock = () => (
       color: rgba(233, 242, 255, 0.8);
     }
 
+    /* ------------------------------------------------------------------
+       ADDED: Verification Sandbox tile styles
+
+       WHY:
+       - Keeps the new tile visually consistent with the existing dashboard.
+       - Adds a small LIVE badge and call-to-action so users immediately
+         understand that the tile launches an interactive verification demo.
+       ------------------------------------------------------------------ */
+    .pv-sandbox-tile {
+      cursor: pointer;
+      border: none;
+      background:
+        radial-gradient(120% 150% at 100% -20%, rgba(0, 180, 255, 0.28), rgba(0,0,0,0) 42%),
+        linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+      min-height: 100%;
+    }
+
+    .pv-sandbox-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 220, 255, 0.45);
+      background: rgba(0, 153, 255, 0.16);
+      color: #dff6ff;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .pv-sandbox-link {
+      margin-top: 12px;
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: #ffffff;
+      opacity: 0.95;
+    }
+
+    .pv-sandbox-tile:hover .pv-sandbox-link {
+      text-decoration: underline;
+    }
+
     /* Buttons readable on dark bg */
     .btn-outline-light {
       border-color: rgba(255,255,255,0.35);
@@ -981,10 +1069,3 @@ const StyleBlock = () => (
 );
 
 export default DashboardPage;
-
-
-
-
-
-
-

@@ -18,14 +18,11 @@
 // This keeps the demo focused and working today: users enter bank + account
 // number, PayVerify checks the registry, and the page displays the result.
 // =============================================================================
-
 import React, { useState } from "react";
 
-import SandboxHero from "../components/sandbox/SandboxHero";
-import VerificationLookupCard, {
-    type SandboxBankOption,
-} from "../components/sandbox/VerificationLookupCard";
-import VerificationResultCard from "../components/sandbox/VerificationResultCard";
+import SandboxHero from "../components/Sandbox/SandboxHero";
+import VerificationLookupCard from "../components/Sandbox/VerificationLookupCard";
+import VerificationResultCard from "../components/Sandbox/VerificationResultCard";
 
 import {
     PublicVerificationService,
@@ -33,6 +30,11 @@ import {
 } from "../services/publicVerificationService";
 
 import "../styles/publicSandbox.css";
+
+interface SandboxBankOption {
+    label: string;
+    code: string;
+}
 
 const BANKS: SandboxBankOption[] = [
     { label: "Access Bank", code: "044" },
@@ -44,7 +46,6 @@ const BANKS: SandboxBankOption[] = [
     { label: "Wema Bank", code: "035" },
     { label: "Sterling Bank", code: "232" },
 ];
-
 const PublicSandboxPage: React.FC = () => {
     const [bankCode, setBankCode] = useState("");
     const [accountNumber, setAccountNumber] = useState("");

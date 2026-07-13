@@ -92,7 +92,10 @@ const App = () => {
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/merchant-created/:merchantId" element={<MerchantCreatedPage />} />
 
-                
+                <Route
+                    path="/public-sandbox"
+                    element={<PublicSandboxPage />}
+                />
 
                 <Route path="/sandbox" element={<PublicSandboxPage />} />
 
