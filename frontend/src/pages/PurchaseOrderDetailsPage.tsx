@@ -1,6 +1,10 @@
-﻿import { useEffect, useState } from 'react';
+﻿//import { useEffect, useState } from 'react';
+//import { useParams, useNavigate } from 'react-router-dom';
+//import axios from 'axios';
+
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { fetchPurchaseOrderById } from '../services/api';
 
 export default function PurchaseOrderDetailsPage() {
     const { id } = useParams();
@@ -13,25 +17,49 @@ export default function PurchaseOrderDetailsPage() {
         loadPurchaseOrder();
     }, [id]);
 
+    //const loadPurchaseOrder = async () => {
+    //    try {
+    //        const token = localStorage.getItem('token');
+
+    //        const response = await axios.get(
+    //            `${import.meta.env.VITE_API_URL}/purchase-orders/${id}`,
+    //            {
+    //                headers: {
+    //                    Authorization: `Bearer ${token}`
+    //                }
+    //            }
+    //        );
+
+    //        console.log(
+    //            'PO ITEMS:',
+    //            response.data.data.items
+    //        );
+
+    //        console.log('PO RESPONSE:', response.data);
+    //        setPo(response.data.data);
+    //    } catch (err) {
+    //        console.error('Failed to load purchase order:', err);
+    //        setPo(null);
+    //    } finally {
+    //        setLoading(false);
+    //    }
+    //};
+
     const loadPurchaseOrder = async () => {
         try {
-            const token = localStorage.getItem('token');
+            setLoading(true);
 
-            const response = await axios.get(
-                `${import.meta.env.VITE_API_URL}/purchase-orders/${id}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
+            if (!id) {
+                console.error('Purchase order ID is missing');
+                setPo(null);
+                return;
+            }
 
-            console.log(
-                'PO ITEMS:',
-                response.data.data.items
-            );
+            const response = await fetchPurchaseOrderById(id);
 
             console.log('PO RESPONSE:', response.data);
+            console.log('PO ITEMS:', response.data?.data?.items);
+
             setPo(response.data.data);
         } catch (err) {
             console.error('Failed to load purchase order:', err);
@@ -40,6 +68,7 @@ export default function PurchaseOrderDetailsPage() {
             setLoading(false);
         }
     };
+
 
     const money = (value: any) =>
         `₦${Number(value || 0).toLocaleString()}`;

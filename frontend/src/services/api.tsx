@@ -157,6 +157,17 @@
  * were sent to the Vercel frontend domain and returned 405.
  */
 
+
+
+
+
+
+
+
+
+
+
+
 import axios from 'axios';
 
 // =============================================================================
@@ -201,6 +212,28 @@ api.interceptors.request.use((config) => {
 
     return config;
 });
+
+
+
+
+// =============================================================================
+// PURCHASE ORDERS
+// =============================================================================
+
+/**
+ * Fetch a single purchase order by ID.
+ *
+ * Uses the shared Axios client so:
+ * - VITE_API_BASE_URL is used consistently.
+ * - The JWT Authorization header is attached automatically.
+ * - Production and local environments use the same API configuration.
+ */
+export const fetchPurchaseOrderById = (
+    purchaseOrderId: number | string
+) =>
+    api.get(`/purchase-orders/${purchaseOrderId}`);
+
+
 
 // =============================================================================
 // RESPONSE INTERCEPTOR
