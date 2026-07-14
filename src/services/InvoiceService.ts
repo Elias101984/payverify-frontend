@@ -2754,9 +2754,20 @@ export class InvoiceService {
         // 🔥 CRITICAL — guaranteed token
         const invoiceRecord = await this.ensureInvoice(intent, grandTotal);
 
+
+        console.log('========================================');
+        console.log('INVOICE FRONTEND_URL:', process.env.FRONTEND_URL);
+        console.log('INVOICE FRONTEND_BASE_URL:', process.env.FRONTEND_BASE_URL);
+        console.log('RESOLVED FRONTEND_BASE_URL:', FRONTEND_BASE_URL);
+        console.log('INVOICE PUBLIC TOKEN:', invoiceRecord.public_token);
+        console.log('========================================');
+
         // 🔥 CORRECT PUBLIC PAYMENT LINK
         const payUrl =
             `${FRONTEND_BASE_URL.replace(/\/+$/, "")}/pay/${invoiceRecord.public_token}`;
+
+
+        console.log('GENERATED PAY URL:', payUrl);
 
         // -----------------------------------------------------------------------
         // PDF creation (your layout preserved)
