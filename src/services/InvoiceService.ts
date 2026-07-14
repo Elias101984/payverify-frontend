@@ -2595,7 +2595,9 @@ import { Invoice } from "../models/Invoice";
 let useNairaSymbol = true;
 
 const FRONTEND_BASE_URL =
-    process.env.FRONTEND_BASE_URL || "http://localhost:5173";
+    process.env.FRONTEND_URL ||
+    process.env.FRONTEND_BASE_URL ||
+    "http://localhost:5173";
 
 function generatePublicToken(): string {
     // shorter, URL safe
@@ -2753,7 +2755,8 @@ export class InvoiceService {
         const invoiceRecord = await this.ensureInvoice(intent, grandTotal);
 
         // 🔥 CORRECT PUBLIC PAYMENT LINK
-        const payUrl = `${FRONTEND_BASE_URL}/pay/${invoiceRecord.public_token}`;
+        const payUrl =
+            `${FRONTEND_BASE_URL.replace(/\/+$/, "")}/pay/${invoiceRecord.public_token}`;
 
         // -----------------------------------------------------------------------
         // PDF creation (your layout preserved)
