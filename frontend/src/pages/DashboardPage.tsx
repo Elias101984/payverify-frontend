@@ -220,16 +220,44 @@ const DashboardPage = () => {
 
             // Handle both response formats
             const responseData = statsRes.data || {};
-            const statsData = responseData.stats || responseData;
+
+            // Supports:
+            // { success: true, data: stats }
+            // { stats: stats }
+            // or a flat stats response
+            const statsData =
+                responseData.data ||
+                responseData.stats ||
+                responseData;
 
             setPoStats({
-                totalOrders: asNum(statsData.total) || asNum(statsData.totalOrders),
-                pendingOrders: asNum(statsData.pending) || asNum(statsData.pendingOrders),
-                approvedOrders: asNum(statsData.approved) || asNum(statsData.approvedOrders),
-                rejectedOrders: asNum(statsData.rejected) || asNum(statsData.rejectedOrders),
-                completedOrders: asNum(statsData.completed) || asNum(statsData.completedOrders),
-                totalAmount: asNum(statsData.totalAmount),
-                pendingAmount: asNum(statsData.pendingAmount)
+                totalOrders:
+                    asNum(statsData.totalOrders) ||
+                    asNum(statsData.total),
+
+                pendingOrders:
+                    asNum(statsData.pending) ||
+                    asNum(statsData.pendingOrders),
+
+                approvedOrders:
+                    asNum(statsData.approved) ||
+                    asNum(statsData.approvedOrders),
+
+                rejectedOrders:
+                    asNum(statsData.rejected) ||
+                    asNum(statsData.rejectedOrders),
+
+                completedOrders:
+                    asNum(statsData.completed) ||
+                    asNum(statsData.completedOrders),
+
+                // The updated service returns totalValue.
+                totalAmount:
+                    asNum(statsData.totalValue) ||
+                    asNum(statsData.totalAmount),
+
+                pendingAmount:
+                    asNum(statsData.pendingAmount),
             });
 
             // Fetch recent purchase orders

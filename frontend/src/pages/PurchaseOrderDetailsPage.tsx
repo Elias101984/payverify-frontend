@@ -1,10 +1,8 @@
-﻿//import { useEffect, useState } from 'react';
-//import { useParams, useNavigate } from 'react-router-dom';
-//import axios from 'axios';
-
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { fetchPurchaseOrderById } from '../services/api';
+import api, { fetchPurchaseOrderById } from '../services/api';
+import PaymentRequestModal from '../components/PaymentRequestModal';
+import { toast } from 'react-toastify';
 
 export default function PurchaseOrderDetailsPage() {
     const { id } = useParams();
@@ -13,37 +11,24 @@ export default function PurchaseOrderDetailsPage() {
     const [po, setPo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
+    // =========================================================================
+    // NEW: PAYMENT REQUEST MODAL STATE
+    // -------------------------------------------------------------------------
+    // Holds the PaymentIntent returned by the idempotent backend endpoint.
+    // Closing the modal does not change the PO status; it remains APPROVED.
+    // =========================================================================
+    const [paymentRequestOpen, setPaymentRequestOpen] =
+        useState(false);
+
+    const [paymentRequestIntent, setPaymentRequestIntent] =
+        useState<any>(null);
+
+    const [creatingPaymentRequest, setCreatingPaymentRequest] =
+        useState(false);
+
     useEffect(() => {
         loadPurchaseOrder();
     }, [id]);
-
-    //const loadPurchaseOrder = async () => {
-    //    try {
-    //        const token = localStorage.getItem('token');
-
-    //        const response = await axios.get(
-    //            `${import.meta.env.VITE_API_URL}/purchase-orders/${id}`,
-    //            {
-    //                headers: {
-    //                    Authorization: `Bearer ${token}`
-    //                }
-    //            }
-    //        );
-
-    //        console.log(
-    //            'PO ITEMS:',
-    //            response.data.data.items
-    //        );
-
-    //        console.log('PO RESPONSE:', response.data);
-    //        setPo(response.data.data);
-    //    } catch (err) {
-    //        console.error('Failed to load purchase order:', err);
-    //        setPo(null);
-    //    } finally {
-    //        setLoading(false);
-    //    }
-    //};
 
     const loadPurchaseOrder = async () => {
         try {
@@ -60,7 +45,28 @@ export default function PurchaseOrderDetailsPage() {
             console.log('PO RESPONSE:', response.data);
             console.log('PO ITEMS:', response.data?.data?.items);
 
-            setPo(response.data.data);
+            // =============================================================
+            // CHANGED:
+            // The backend now returns invoice/paymentIntent inside data, while
+            // also exposing top-level copies for backwards compatibility.
+            //
+            // WHY:
+            // Merging both shapes makes this page work during deployment
+            // transitions and ensures resumable payment data is not lost.
+            // =============================================================
+            const purchaseOrderData = response.data?.data;
+
+            setPo({
+                ...purchaseOrderData,
+                invoice:
+                    purchaseOrderData?.invoice ??
+                    response.data?.invoice ??
+                    null,
+                paymentIntent:
+                    purchaseOrderData?.paymentIntent ??
+                    response.data?.paymentIntent ??
+                    null,
+            });
         } catch (err) {
             console.error('Failed to load purchase order:', err);
             setPo(null);
@@ -68,7 +74,6 @@ export default function PurchaseOrderDetailsPage() {
             setLoading(false);
         }
     };
-
 
     const money = (value: any) =>
         `₦${Number(value || 0).toLocaleString()}`;
@@ -91,6 +96,180 @@ export default function PurchaseOrderDetailsPage() {
                 return 'bg-danger';
             default:
                 return 'bg-secondary';
+        }
+    };
+
+    // =========================================================================
+    // NEW: NORMALIZED ORDER / PAYMENT STATE
+    // -------------------------------------------------------------------------
+    // WHY:
+    // The API can expose payment status through different response properties.
+    // Normalizing them here lets the page reliably decide which action button
+    // to show when the user returns later.
+    // =========================================================================
+    const normalizedOrderStatus = String(po?.status || '').toLowerCase();
+
+    const normalizedPaymentStatus = String(
+        po?.paymentStatus ||
+        po?.paymentIntent?.status ||
+        po?.payment?.status ||
+        ''
+    ).toLowerCase();
+
+    const normalizedInvoiceStatus = String(
+        po?.invoiceStatus ||
+        po?.invoice?.status ||
+        ''
+    ).toLowerCase();
+
+    const isPaid =
+        normalizedOrderStatus === 'paid' ||
+        normalizedPaymentStatus === 'paid' ||
+        normalizedPaymentStatus === 'success' ||
+        normalizedPaymentStatus === 'successful' ||
+        normalizedInvoiceStatus === 'paid';
+
+    const paymentLink =
+        po?.paymentLink ||
+        po?.paymentIntent?.payment_link ||
+        po?.invoice?.paymentLink ||
+        po?.invoice?.payment_link ||
+        '';
+
+    // =========================================================================
+    // NEW: EXISTING INVOICE ID
+    // -------------------------------------------------------------------------
+    // The payment page starts the verification-first flow using invoiceId.
+    // A pre-generated paymentLink is NOT required.
+    // =========================================================================
+    const invoiceId = Number(
+        po?.invoiceId ||
+        po?.invoice?.id ||
+        0
+    );
+
+    const hasInvoice =
+        Number.isInteger(invoiceId) &&
+        invoiceId > 0;
+
+    // =========================================================================
+    // NEW: ACTION VISIBILITY RULES
+    // -------------------------------------------------------------------------
+    // PENDING:
+    // The user created the PO but did not finish the order workflow.
+    //
+    // APPROVED + NOT PAID:
+    // The order was approved, but payment still needs to be completed.
+    //
+    // PAID / REJECTED:
+    // No continuation/payment CTA is displayed.
+    // =========================================================================
+    const canContinueOrder =
+        normalizedOrderStatus === 'pending' && !isPaid;
+
+    const canCompletePayment =
+        normalizedOrderStatus === 'approved' && !isPaid;
+
+    const hasStartedPayment = Boolean(
+        hasInvoice ||
+        po?.paymentIntentId ||
+        po?.paymentIntent?.id ||
+        paymentLink
+    );
+
+    // =========================================================================
+    // NEW: CONTINUE ORDER HANDLER
+    // -------------------------------------------------------------------------
+    // WHY:
+    // A user may create a PO, leave the application, and return later.
+    // This takes them back to the existing PO editing/completion workflow
+    // instead of forcing them to create another PO.
+    //
+    // IMPORTANT:
+    // This assumes your edit/continue route is:
+    //
+    //     /purchase-orders/:id/edit
+    //
+    // If App.tsx uses a different route, update only the path below.
+    // =========================================================================
+    const handleContinueOrder = () => {
+        if (!po?.id) return;
+
+        navigate(`/purchase-orders/${po.id}/edit`);
+    };
+
+    // =========================================================================
+    // NEW: COMPLETE / RESUME PAYMENT HANDLER
+    // -------------------------------------------------------------------------
+    // WHY:
+    // Approved-but-unpaid orders should not become a dead end.
+    //
+    // This reopens the EXISTING PayVerify invoice/payment link. It does not
+    // mark the order as paid. The Paystack webhook remains the source of truth
+    // that updates Payment, Invoice and Purchase Order to PAID.
+    // =========================================================================
+    const handleCompletePayment = async () => {
+        if (!po?.id) {
+            toast.error(
+                'Purchase order ID is missing.'
+            );
+            return;
+        }
+
+        try {
+            setCreatingPaymentRequest(true);
+
+            // ================================================================
+            // CHANGED:
+            // Create or reuse the existing payment request and display the
+            // familiar PaymentRequestModal.
+            //
+            // WHY:
+            // The user should not be sent straight to the invoice page.
+            // They first regain access to the QR/link/invoice modal and may
+            // choose Open Invoice when ready.
+            // ================================================================
+            const response = await api.post(
+                `/purchase-orders/${po.id}/payment-request`
+            );
+
+            const paymentIntent =
+                response.data?.data?.paymentIntent;
+
+            if (
+                !paymentIntent ||
+                !paymentIntent.payment_link
+            ) {
+                throw new Error(
+                    'The payment request did not return a valid payment link.'
+                );
+            }
+
+            setPaymentRequestIntent(
+                paymentIntent
+            );
+
+            setPaymentRequestOpen(true);
+
+            toast.success(
+                'Payment request is ready.'
+            );
+
+            // Refresh the details panel so Invoice/Intent IDs are shown.
+            await loadPurchaseOrder();
+        } catch (error: any) {
+            console.error(
+                'Failed to create payment request:',
+                error
+            );
+
+            toast.error(
+                error?.response?.data?.message ||
+                error?.message ||
+                'Failed to create payment request.'
+            );
+        } finally {
+            setCreatingPaymentRequest(false);
         }
     };
 
@@ -128,12 +307,17 @@ export default function PurchaseOrderDetailsPage() {
                     <div className="d-flex justify-content-between align-items-start mb-3">
                         <div>
                             <h2 className="mb-1">Purchase Order Details</h2>
+
                             <div className="text-light opacity-75">
-                                {po.poNumber || po.poReference || `PO-${po.id}`}
+                                {po.poNumber ||
+                                    po.poReference ||
+                                    `PO-${po.id}`}
                             </div>
                         </div>
 
-                        <span className={`badge ${statusClass(po.status)} px-3 py-2`}>
+                        <span
+                            className={`badge ${statusClass(po.status)} px-3 py-2`}
+                        >
                             {(po.status || 'N/A').toUpperCase()}
                         </span>
                     </div>
@@ -145,8 +329,21 @@ export default function PurchaseOrderDetailsPage() {
                                 <h6>Order Summary</h6>
 
                                 <InfoRow label="PO ID" value={po.id} />
-                                <InfoRow label="PO Number" value={po.poNumber || po.poReference || `PO-${po.id}`} />
-                                <InfoRow label="Amount" value={money(po.totalAmount || po.amount)} />
+
+                                <InfoRow
+                                    label="PO Number"
+                                    value={
+                                        po.poNumber ||
+                                        po.poReference ||
+                                        `PO-${po.id}`
+                                    }
+                                />
+
+                                <InfoRow
+                                    label="Amount"
+                                    value={money(po.totalAmount || po.amount)}
+                                />
+
                                 <InfoRow label="Status" value={po.status || 'N/A'} />
                                 <InfoRow label="Created" value={dateTime(po.createdAt)} />
                                 <InfoRow label="Due Date" value={dateOnly(po.dueDate)} />
@@ -158,7 +355,16 @@ export default function PurchaseOrderDetailsPage() {
                                 <h6>Merchant / Customer</h6>
 
                                 <InfoRow label="Merchant ID" value={po.merchantId || 'N/A'} />
-                                <InfoRow label="Merchant Name" value={po.merchantName || po.merchant?.name || 'N/A'} />
+
+                                <InfoRow
+                                    label="Merchant Name"
+                                    value={
+                                        po.merchantName ||
+                                        po.merchant?.name ||
+                                        'N/A'
+                                    }
+                                />
+
                                 <InfoRow label="Customer Email" value={po.customerEmail || 'N/A'} />
                                 <InfoRow label="Created By" value={po.createdBy || po.userId || 'N/A'} />
                             </div>
@@ -173,10 +379,10 @@ export default function PurchaseOrderDetailsPage() {
                                 <InfoRow label="Payment Intent ID" value={po.paymentIntentId || po.paymentIntent?.id || 'N/A'} />
                                 <InfoRow label="Payment Status" value={po.paymentStatus || po.paymentIntent?.status || 'N/A'} />
 
-                                {(po.paymentLink || po.paymentIntent?.payment_link) && (
+                                {paymentLink && (
                                     <a
                                         className="btn btn-primary btn-sm mt-2"
-                                        href={po.paymentLink || po.paymentIntent?.payment_link}
+                                        href={paymentLink}
                                         target="_blank"
                                         rel="noreferrer"
                                     >
@@ -189,11 +395,99 @@ export default function PurchaseOrderDetailsPage() {
                         <div className="col-md-6">
                             <div className="pv-info-card">
                                 <h6>Description</h6>
+
                                 <p className="mb-0 text-white">
                                     {po.description || 'No description provided'}
                                 </p>
                             </div>
                         </div>
+
+                        {/* =====================================================
+                            NEW: ORDER RECOVERY / PAYMENT ACTION CARD
+
+                            WHY:
+                            Gives returning users a clear next action:
+
+                            - Pending order:
+                              Continue Order
+
+                            - Approved but unpaid order:
+                              Complete Payment or Resume Payment
+
+                            - Paid/rejected order:
+                              No recovery action is displayed
+
+                            The Paystack webhook still performs the final PAID
+                            database update after a successful transaction.
+                           ===================================================== */}
+                        {(canContinueOrder || canCompletePayment) && (
+                            <div className="col-12">
+                                <div
+                                    className={
+                                        canContinueOrder
+                                            ? 'pv-order-action-card pv-order-action-pending'
+                                            : 'pv-order-action-card pv-order-action-payment'
+                                    }
+                                >
+                                    <div className="pv-order-action-icon">
+                                        {canContinueOrder ? '📝' : '💳'}
+                                    </div>
+
+                                    <div className="pv-order-action-content">
+                                        <div className="pv-order-action-label">
+                                            {canContinueOrder
+                                                ? 'Order Incomplete'
+                                                : 'Payment Required'}
+                                        </div>
+
+                                        <h4 className="pv-order-action-title">
+                                            {canContinueOrder
+                                                ? 'Continue This Purchase Order'
+                                                : hasStartedPayment
+                                                    ? 'Resume Payment for This Order'
+                                                    : 'Complete Payment for This Order'}
+                                        </h4>
+
+                                        <p className="pv-order-action-description">
+                                            {canContinueOrder
+                                                ? 'This purchase order is still pending. Continue the order to review or complete the remaining information.'
+                                                : 'This purchase order has been approved, but payment has not yet been completed. Continue through PayVerify and Paystack to finish the order.'}
+                                        </p>
+
+                                        {canCompletePayment && !hasInvoice && (
+                                            <div className="pv-order-action-warning">
+                                                The invoice is not yet available for this approved order.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pv-order-action-button-area">
+                                        {canContinueOrder && (
+                                            <button
+                                                type="button"
+                                                className="pv-continue-order-button"
+                                                onClick={handleContinueOrder}
+                                            >
+                                                Continue Order →
+                                            </button>
+                                        )}
+
+                                        {canCompletePayment && (
+                                            <button
+                                                type="button"
+                                                className="pv-complete-payment-button"
+                                                onClick={handleCompletePayment}
+                                                disabled={creatingPaymentRequest}
+                                            >
+                                                {hasStartedPayment
+                                                    ? 'Resume Payment →'
+                                                    : 'Complete Payment →'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {Array.isArray(po.items) && po.items.length > 0 && (
                             <div className="col-12">
@@ -211,14 +505,15 @@ export default function PurchaseOrderDetailsPage() {
                                                     <th>Total</th>
                                                 </tr>
                                             </thead>
+
                                             <tbody>
                                                 {po.items.map((item: any, index: number) => (
                                                     <tr key={item.id || index}>
-                                                        <td>{item.name || 'N/A'}</td>
+                                                        <td>{item.itemName || item.name || 'N/A'}</td>
                                                         <td>{item.description || 'N/A'}</td>
                                                         <td>{item.quantity || 0}</td>
                                                         <td>{money(item.unitPrice)}</td>
-                                                        <td>{money(item.total)}</td>
+                                                        <td>{money(item.lineTotal || item.total)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -229,6 +524,22 @@ export default function PurchaseOrderDetailsPage() {
                         )}
                     </div>
                 </div>
+
+                {/* =========================================================
+                    NEW: REUSED PAYMENT REQUEST MODAL
+
+                    WHY:
+                    This is the same QR/link/invoice modal already used after
+                    approving a PO. Closing it leaves the order APPROVED.
+                   ========================================================= */}
+                <PaymentRequestModal
+                    open={paymentRequestOpen}
+                    onClose={() => {
+                        setPaymentRequestOpen(false);
+                        setPaymentRequestIntent(null);
+                    }}
+                    paymentIntent={paymentRequestIntent}
+                />
 
                 <StyleBlock />
             </div>
@@ -306,6 +617,139 @@ const StyleBlock = () => (
             --bs-table-bg: transparent;
             --bs-table-color: #ffffff;
             --bs-table-border-color: rgba(255,255,255,0.12);
+        }
+
+        /* ================================================================
+           NEW: ORDER RECOVERY / PAYMENT ACTION CARD
+           ================================================================ */
+
+        .pv-order-action-card {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+            padding: 22px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.24);
+        }
+
+        .pv-order-action-pending {
+            border: 1px solid rgba(96,165,250,0.42);
+            background:
+                radial-gradient(500px 220px at 100% 0%, rgba(59,130,246,0.18), transparent 60%),
+                linear-gradient(135deg, rgba(37,99,235,0.15), rgba(255,255,255,0.045));
+        }
+
+        .pv-order-action-payment {
+            border: 1px solid rgba(245,158,11,0.45);
+            background:
+                radial-gradient(500px 220px at 100% 0%, rgba(34,197,94,0.16), transparent 60%),
+                linear-gradient(135deg, rgba(245,158,11,0.13), rgba(255,255,255,0.045));
+        }
+
+        .pv-order-action-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 58px;
+            height: 58px;
+            flex-shrink: 0;
+            border-radius: 16px;
+            background: rgba(59,130,246,0.16);
+            border: 1px solid rgba(96,165,250,0.28);
+            font-size: 27px;
+        }
+
+        .pv-order-action-content {
+            flex: 1;
+        }
+
+        .pv-order-action-label {
+            margin-bottom: 5px;
+            color: #93c5fd;
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+        }
+
+        .pv-order-action-payment .pv-order-action-label {
+            color: #fbbf24;
+        }
+
+        .pv-order-action-title {
+            margin: 0 0 6px;
+            color: #ffffff;
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+
+        .pv-order-action-description {
+            margin: 0;
+            max-width: 590px;
+            color: rgba(255,255,255,0.72);
+            font-size: 0.88rem;
+            line-height: 1.55;
+        }
+
+        .pv-order-action-warning {
+            margin-top: 10px;
+            color: #fde68a;
+            font-size: 0.8rem;
+        }
+
+        .pv-order-action-button-area {
+            flex-shrink: 0;
+        }
+
+        .pv-continue-order-button,
+        .pv-complete-payment-button {
+            min-width: 195px;
+            padding: 13px 20px;
+            border: none;
+            border-radius: 10px;
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        }
+
+        .pv-continue-order-button {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            box-shadow: 0 8px 22px rgba(37,99,235,0.25);
+        }
+
+        .pv-complete-payment-button {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            box-shadow: 0 8px 22px rgba(34,197,94,0.25);
+        }
+
+        .pv-continue-order-button:hover,
+        .pv-complete-payment-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+
+        .pv-complete-payment-button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @media (max-width: 768px) {
+            .pv-order-action-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .pv-order-action-button-area {
+                width: 100%;
+            }
+
+            .pv-continue-order-button,
+            .pv-complete-payment-button {
+                width: 100%;
+            }
         }
     `}</style>
 );

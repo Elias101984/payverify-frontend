@@ -35,6 +35,17 @@ import { PaystackService } from "../services/PaystackService";
 import { Invoice } from "../models/Invoice";
 import Payment from "../models/Payment";
 import Transaction from "../models/Transaction";
+
+// =============================================================================
+// NEW: PAYMENT STATUS PROPAGATION MODELS
+// -----------------------------------------------------------------------------
+// Used only by the Paystack webhook so a confirmed payment updates the complete
+// business chain:
+//
+// Invoice -> PaymentIntent -> PurchaseOrder
+// =============================================================================
+import { PaymentIntent } from "../models/PaymentIntent";
+import PurchaseOrder from "../models/PurchaseOrder";
 import VerificationGatewayService from "../services/VerificationGatewayService";
 import { PaymentInitializationService } from "../services/PaymentInitializationService";
 
@@ -424,50 +435,134 @@ export const continuePayment = async (
 // PAYSTACK WEBHOOK
 // POST /api/webhooks/paystack
 // =============================================================================
+//
+// WHAT CHANGED
+// -----------------------------------------------------------------------------
+// The existing signature validation, Paystack verification, email notifications,
+// and HTTP behavior are preserved.
+//
+// Only the record-matching and successful-payment updates were strengthened:
+//
+// 1. Find the exact Transaction using the unique Paystack reference.
+// 2. Find the exact Payment using that Transaction ID.
+// 3. Mark Transaction and Payment successful.
+// 4. Mark the Invoice paid.
+// 5. Follow Invoice.payment_intent_id to the PaymentIntent.
+// 6. Follow PaymentIntent.purchase_order_id to the PurchaseOrder.
+// 7. Mark both PaymentIntent and PurchaseOrder paid.
+//
+// WHY
+// -----------------------------------------------------------------------------
+// The previous implementation selected the latest Paystack Payment in the
+// database. With concurrent customers, that could update the wrong Payment.
+// It also left the Purchase Order status at "approved" after successful payment.
+//
+// This handler is idempotent: repeated Paystack webhook deliveries do not create
+// records or incorrectly apply the payment twice.
+// =============================================================================
 
 export const handlePaystackWebhook = async (
     req: any,
     res: Response
 ) => {
     try {
-        const signature = req.headers["x-paystack-signature"];
+        const signatureHeader =
+            req.headers["x-paystack-signature"];
+
+        const signature = Array.isArray(signatureHeader)
+            ? signatureHeader[0]
+            : signatureHeader;
+
         const rawBody: Buffer = req.body;
 
-        const isValid = verifyPaystackSignature(rawBody, signature);
+        const isValid =
+            verifyPaystackSignature(
+                rawBody,
+                signature
+            );
 
         if (!isValid) {
-            console.warn("❌ Invalid Paystack signature");
+            console.warn(
+                "❌ Invalid Paystack signature"
+            );
+
             return res.sendStatus(401);
         }
 
-        const event = JSON.parse(rawBody.toString("utf8"));
-        const reference = event?.data?.reference;
+        const event =
+            JSON.parse(
+                rawBody.toString("utf8")
+            );
+
+        const reference =
+            String(
+                event?.data?.reference || ""
+            ).trim();
 
         if (!reference) {
             return res.sendStatus(200);
         }
 
+        // ---------------------------------------------------------------------
+        // Resolve the exact internal transaction/payment from the Paystack
+        // reference. This prevents another customer's latest payment from being
+        // updated accidentally.
+        // ---------------------------------------------------------------------
+        const transaction =
+            await Transaction.findOne({
+                where: {
+                    reference,
+                },
+            });
+
+        const payment = transaction
+            ? await Payment.findOne({
+                where: {
+                    transactionId:
+                        transaction.id,
+                    method: "paystack",
+                },
+                order: [
+                    ["createdAt", "DESC"]
+                ],
+            })
+            : null;
+
+        // ---------------------------------------------------------------------
+        // FAILED PAYMENT
+        // ---------------------------------------------------------------------
         if (event.event === "charge.failed") {
-            const invoiceId = extractInvoiceId(reference);
+            const invoiceId =
+                extractInvoiceId(reference);
+
+            if (
+                transaction &&
+                transaction.status !== "failed"
+            ) {
+                await transaction.update({
+                    status: "failed",
+                });
+            }
+
+            if (
+                payment &&
+                payment.status !== "failed"
+            ) {
+                await payment.update({
+                    status: "failed",
+                });
+            }
 
             if (invoiceId) {
-                const invoice = await Invoice.findByPk(invoiceId);
+                const invoice =
+                    await Invoice.findByPk(
+                        invoiceId
+                    );
 
-                const payment = await Payment.findOne({
-                    where: {
-                        method: "paystack",
-                        status: "initiated",
-                    },
-                    order: [["createdAt", "DESC"]],
-                });
-
-                if (payment) {
-                    await payment.update({
-                        status: "failed",
-                    });
-                }
-
-                if (invoice && invoice.customer_email) {
+                if (
+                    invoice &&
+                    invoice.customer_email
+                ) {
                     await sendPaymentFailedEmail(
                         invoice.customer_email,
                         invoice.id,
@@ -483,49 +578,168 @@ export const handlePaystackWebhook = async (
             return res.sendStatus(200);
         }
 
-        const verify = await paystack.verifyTransaction(reference);
+        // ---------------------------------------------------------------------
+        // Preserve the existing server-to-server Paystack verification.
+        // The database is never marked paid from the webhook event alone.
+        // ---------------------------------------------------------------------
+        const verify =
+            await paystack.verifyTransaction(
+                reference
+            );
 
         if (verify.data.status !== "success") {
             return res.sendStatus(200);
         }
 
-        const payment = await Payment.findOne({
-            where: {
-                method: "paystack",
-            },
-            order: [["createdAt", "DESC"]],
-        });
+        const invoiceId =
+            extractInvoiceId(reference);
 
-        if (payment && payment.status !== "success") {
+        if (!invoiceId) {
+            console.error(
+                "Paystack success received but invoice ID could not be extracted:",
+                reference
+            );
+
+            return res.sendStatus(500);
+        }
+
+        const invoice =
+            await Invoice.findByPk(
+                invoiceId
+            );
+
+        if (!invoice) {
+            console.error(
+                "Paystack success received but invoice was not found:",
+                {
+                    reference,
+                    invoiceId,
+                }
+            );
+
+            return res.sendStatus(500);
+        }
+
+        // ---------------------------------------------------------------------
+        // Update the Transaction.
+        //
+        // IMPORTANT:
+        // The Transaction model uses the enum:
+        //
+        //   pending | completed | failed
+        //
+        // so we must use "completed" instead of "success".
+        // ---------------------------------------------------------------------
+        if (
+            transaction &&
+            transaction.status !== "completed"
+        ) {
+            await transaction.update({
+                status: "completed",
+            });
+        }
+
+        if (
+            payment &&
+            payment.status !== "success"
+        ) {
             await payment.update({
                 status: "success",
             });
         }
 
-        const invoiceId = extractInvoiceId(reference);
+        const invoiceWasAlreadyPaid =
+            invoice.status === "paid";
 
-        if (invoiceId) {
-            const invoice = await Invoice.findByPk(invoiceId);
+        if (!invoiceWasAlreadyPaid) {
+            await invoice.update({
+                status: "paid",
+            });
+        }
 
-            if (invoice && invoice.status !== "paid") {
-                await invoice.update({
-                    status: "paid",
-                });
+        const paymentIntentId =
+            Number(
+                invoice.payment_intent_id
+            );
 
-                if (invoice.customer_email) {
-                    await sendInvoicePaidEmail(
-                        invoice.customer_email,
-                        invoice.id,
-                        Number(invoice.amount),
-                        `${process.env.FRONTEND_URL}/invoice/pay/${invoice.id}`
-                    );
-                }
+        const paymentIntent =
+            Number.isInteger(
+                paymentIntentId
+            ) &&
+                paymentIntentId > 0
+                ? await PaymentIntent.findByPk(
+                    paymentIntentId
+                )
+                : null;
+
+        if (
+            paymentIntent &&
+            paymentIntent.status !== "paid"
+        ) {
+            await paymentIntent.update({
+                status: "paid",
+            });
+        }
+
+        const purchaseOrderId =
+            Number(
+                paymentIntent?.purchase_order_id
+            );
+
+        const purchaseOrder =
+            Number.isInteger(
+                purchaseOrderId
+            ) &&
+                purchaseOrderId > 0
+                ? await PurchaseOrder.findByPk(
+                    purchaseOrderId
+                )
+                : null;
+
+        if (
+            purchaseOrder &&
+            purchaseOrder.status !== "paid"
+        ) {
+            await purchaseOrder.update({
+                status: "paid",
+            });
+        }
+
+        console.log(
+            "✅ Paystack payment status updated:",
+            {
+                reference,
+                transactionId:
+                    transaction?.id ?? null,
+                paymentId:
+                    payment?.id ?? null,
+                invoiceId:
+                    invoice.id,
+                paymentIntentId:
+                    paymentIntent?.id ?? null,
+                purchaseOrderId:
+                    purchaseOrder?.id ?? null,
             }
+        );
+
+        if (
+            !invoiceWasAlreadyPaid &&
+            invoice.customer_email
+        ) {
+            await sendInvoicePaidEmail(
+                invoice.customer_email,
+                invoice.id,
+                Number(invoice.amount),
+                `${process.env.FRONTEND_URL}/invoice/pay/${invoice.id}`
+            );
         }
 
         return res.sendStatus(200);
     } catch (error) {
-        console.error("handlePaystackWebhook error:", error);
+        console.error(
+            "handlePaystackWebhook error:",
+            error
+        );
 
         return res.sendStatus(500);
     }
