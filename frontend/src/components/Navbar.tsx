@@ -56,12 +56,12 @@ const Navbar = () => {
                                 <Link className={isActive('/admin-transactions')} to="/admin-transactions">Admin Transactions</Link>
                             </li>
                         )}
-                        <li className="nav-item">
-                            <Link className={isActive('/qr-generator')} to="/qr-generator">QR Generator</Link>
-                        </li>
-                        <li className="nav-item">
-                            <Link className={isActive('/qr-verify')} to="/qr-verify">QR Verification</Link>
-                        </li>
+                        {/*<li className="nav-item">*/}
+                        {/*    <Link className={isActive('/qr-generator')} to="/qr-generator">QR Generator</Link>*/}
+                        {/*</li>*/}
+                        {/*<li className="nav-item">*/}
+                        {/*    <Link className={isActive('/qr-verify')} to="/qr-verify">QR Verification</Link>*/}
+                        {/*</li>*/}
                         <li className="nav-item">
                             <Link className={isActive('/register')} to="/register">Register</Link>
                         </li>

@@ -114,6 +114,17 @@ export class PaymentIntentService {
             "http://localhost:5173"
         ).replace(/\/+$/, "");
 
+        // ========================================================
+        // DEBUG
+        // Remove after production verification
+        // ========================================================
+        console.log("========== PAYMENT LINK DEBUG ==========");
+        console.log("FRONTEND_URL:", process.env.FRONTEND_URL);
+        console.log("Resolved frontendUrl:", frontendUrl);
+        console.log("Purchase Order:", purchaseOrderId);
+        console.log("========================================");
+
+
         let intent = await PaymentIntent.findOne({
             where: {
                 purchase_order_id: purchaseOrderId
@@ -134,6 +145,8 @@ export class PaymentIntentService {
                 payment_link: `${frontendUrl}/pay/${token}`,
                 status: "pending"
             });
+
+            console.log("Created Payment Link:", intent.payment_link);
 
         } else {
 

@@ -1,56 +1,61 @@
 ﻿// =============================================================================
-// PaymentRequestModal.tsx (UPDATED)
+// frontend/src/components/PaymentRequestModal.tsx
+// =============================================================================
 //
-// EXISTING FUNCTIONALITY PRESERVED:
-// ------------------------------------------------------------
-// ✅ Displays payment request details
+// PURPOSE
+// -----------------------------------------------------------------------------
+// Displays the reusable payment request modal for an approved purchase order.
+//
+// EXISTING FUNCTIONALITY PRESERVED
+// -----------------------------------------------------------------------------
+// ✅ Displays payment request amount and status
 // ✅ Displays QR code
 // ✅ Copies payment link
 // ✅ Downloads QR code
 // ✅ Downloads PDF invoice
 // ✅ Opens public invoice/payment page
-// ✅ Extracts public token from payment_link
+// ✅ Reuses the existing PaymentIntent
 //
-// NEW CHANGES:
-// ------------------------------------------------------------
-// ✅ Added getFrontendPaymentLink()
-// ✅ Normalizes old/stored payment links to the current frontend domain
-// ✅ QR code now uses the normalized frontend payment URL
-// ✅ Copy Link now copies the normalized frontend payment URL
-// ✅ Open Invoice now opens the normalized frontend payment URL
-// ✅ PDF token extraction now uses the normalized payment URL
+// WHAT CHANGED
+// -----------------------------------------------------------------------------
+// ✅ The payment URL is no longer rebuilt from window.location.origin alone.
+// ✅ The component now prefers VITE_FRONTEND_URL for the public /pay/:token URL.
+// ✅ If the page is ever rendered from a Render backend hostname, it falls back
+//    to the configured Vercel frontend instead of generating another Render URL.
+// ✅ Old payment links are repaired in-memory by extracting only the token.
+// ✅ The PDF download now uses VITE_API_BASE_URL instead of a relative /api URL.
+// ✅ QR download now targets this modal's QR canvas specifically.
 //
-// WHY THIS CHANGE WAS NEEDED:
-// ------------------------------------------------------------
-// Some payment intents may contain an old or incorrectly generated URL:
+// WHY
+// -----------------------------------------------------------------------------
+// window.location.origin is only safe when the component is definitely running
+// from the Vercel frontend. If the browser is on a Render hostname, rebuilding
+// the link from window.location.origin produces:
 //
-//   https://payverifyv1.onrender.com/pay/<token>
+//     https://payverifyv1.onrender.com/pay/<token>
 //
-// The /pay/:token route belongs to the React frontend hosted on Vercel.
-// It is NOT an Express backend route on Render.
+// Express does not own /pay/:token, so Render correctly returns:
 //
-// Therefore, the frontend now:
-// 1. Reads the existing payment_link.
-// 2. Finds the "/pay/" portion of the URL.
-// 3. Extracts the public payment token.
-// 4. Rebuilds the URL using window.location.origin.
+//     Cannot GET /pay/<token>
 //
-// Example:
+// The /pay/:token route belongs to the React frontend. Therefore this component
+// now resolves the frontend base URL explicitly and always builds the customer-
+// facing payment URL from that frontend origin.
 //
-// OLD:
-//   https://payverifyv1.onrender.com/pay/abc123
+// RECOMMENDED VERCEL ENVIRONMENT VARIABLE
+// -----------------------------------------------------------------------------
+// VITE_FRONTEND_URL=https://payverify-web-v2.vercel.app
 //
-// NORMALIZED:
-//   https://payverify-web-v2.vercel.app/pay/abc123
+// EXISTING API ENVIRONMENT VARIABLE
+// -----------------------------------------------------------------------------
+// VITE_API_BASE_URL=https://payverifyv1.onrender.com/api
 //
-// This also protects existing payment intents already stored in the database
-// with an outdated or incorrect frontend hostname.
 // =============================================================================
 
-import React, { useState, useEffect } from "react";
-import { Modal, Button, Badge } from "react-bootstrap";
-import { toast } from "react-toastify";
+import React, { useEffect, useMemo, useState } from "react";
+import { Badge, Button, Modal } from "react-bootstrap";
 import { QRCodeCanvas } from "qrcode.react";
+import { toast } from "react-toastify";
 
 interface PaymentIntent {
     id: string;
@@ -66,202 +71,179 @@ interface Props {
     paymentIntent: PaymentIntent | null;
 }
 
-const PaymentRequestModal: React.FC<Props> = ({
-    open,
-    onClose,
-    paymentIntent
-}) => {
+const PRODUCTION_FRONTEND_FALLBACK =
+    "https://payverify-web-v2.vercel.app";
 
-    const [cachedIntent, setCachedIntent] = useState(paymentIntent);
-    const [copied, setCopied] = useState(false);
+const normalizeBaseUrl = (value: string): string =>
+    value.trim().replace(/\/+$/, "");
 
-    // =============================================================================
-    // EXISTING:
-    // Keep the locally cached payment intent synchronized with the payment intent
-    // received from the parent component.
-    // =============================================================================
-    useEffect(() => {
-        if (paymentIntent) {
-            setCachedIntent(paymentIntent);
-        }
-    }, [paymentIntent]);
+const extractPaymentToken = (
+    paymentLink?: string | null
+): string => {
+    if (!paymentLink) {
+        return "";
+    }
 
-    // =============================================================================
-    // NEW: NORMALIZE PAYMENT LINK TO CURRENT FRONTEND DOMAIN
-    //
-    // WHAT CHANGED:
-    // ------------------------------------------------------------
-    // The payment_link returned by the backend may contain an old or incorrect
-    // hostname, for example:
-    //
-    //   https://payverifyv1.onrender.com/pay/<token>
-    //
-    // Since /pay/:token is a React frontend route, we extract the token and
-    // rebuild the URL using the current browser origin.
-    //
-    // In production:
-    //
-    //   window.location.origin
-    //
-    // becomes:
-    //
-    //   https://payverify-web-v2.vercel.app
-    //
-    // In local development it automatically becomes:
-    //
-    //   http://localhost:5173
-    //
-    // WHY:
-    // ------------------------------------------------------------
-    // This prevents the frontend from opening /pay/:token on the Render backend,
-    // where Express correctly returns:
-    //
-    //   Cannot GET /pay/<token>
-    //
-    // It also fixes existing payment intents that may already have an incorrect
-    // payment_link stored in the database.
-    // =============================================================================
-    const getFrontendPaymentLink = (): string => {
+    try {
+        const parsedUrl = new URL(
+            paymentLink,
+            window.location.origin
+        );
 
-        const storedLink = cachedIntent?.payment_link;
+        const marker = "/pay/";
+        const markerIndex =
+            parsedUrl.pathname.indexOf(marker);
 
-        if (!storedLink) {
+        if (markerIndex === -1) {
             return "";
         }
 
-        try {
-            // Parse the stored payment link.
-            //
-            // The second argument allows this to also work if storedLink
-            // is ever returned as a relative URL instead of an absolute URL.
-            const parsedUrl = new URL(
-                storedLink,
-                window.location.origin
+        return decodeURIComponent(
+            parsedUrl.pathname
+                .substring(markerIndex + marker.length)
+                .replace(/^\/+|\/+$/g, "")
+        );
+    } catch {
+        const token =
+            paymentLink.split("/pay/")[1];
+
+        if (!token) {
+            return "";
+        }
+
+        return decodeURIComponent(
+            token
+                .split(/[?#]/)[0]
+                .replace(/^\/+|\/+$/g, "")
+        );
+    }
+};
+
+const resolveFrontendBaseUrl = (): string => {
+    const configuredFrontendUrl =
+        String(
+            import.meta.env.VITE_FRONTEND_URL || ""
+        ).trim();
+
+    if (configuredFrontendUrl) {
+        return normalizeBaseUrl(
+            configuredFrontendUrl
+        );
+    }
+
+    const currentOrigin =
+        normalizeBaseUrl(
+            window.location.origin
+        );
+
+    // -------------------------------------------------------------------------
+    // SAFETY FALLBACK
+    //
+    // If this component is ever opened from a Render backend hostname, never
+    // use that origin for /pay/:token. That route belongs to the Vercel app.
+    // -------------------------------------------------------------------------
+    if (
+        window.location.hostname
+            .toLowerCase()
+            .endsWith(".onrender.com")
+    ) {
+        return PRODUCTION_FRONTEND_FALLBACK;
+    }
+
+    return currentOrigin;
+};
+
+const resolveApiBaseUrl = (): string => {
+    const configuredApiUrl =
+        String(
+            import.meta.env.VITE_API_BASE_URL ||
+            import.meta.env.VITE_API_URL ||
+            ""
+        ).trim();
+
+    if (configuredApiUrl) {
+        return normalizeBaseUrl(
+            configuredApiUrl
+        );
+    }
+
+    // Local backend fallback used by the existing PayVerify setup.
+    return "http://localhost:5000/api";
+};
+
+const PaymentRequestModal: React.FC<Props> = ({
+    open,
+    onClose,
+    paymentIntent,
+}) => {
+    const [cachedIntent, setCachedIntent] =
+        useState<PaymentIntent | null>(
+            paymentIntent
+        );
+
+    const [copied, setCopied] =
+        useState(false);
+
+    useEffect(() => {
+        if (paymentIntent) {
+            setCachedIntent(
+                paymentIntent
             );
+        }
+    }, [paymentIntent]);
 
-            // The public frontend payment route always contains:
-            //
-            //   /pay/<token>
-            //
-            // We use this marker to locate the token regardless of which
-            // hostname was originally stored.
-            const marker = "/pay/";
-
-            // Find where "/pay/" begins inside the URL pathname.
-            //
-            // Example pathname:
-            //
-            //   /pay/abc123
-            //
-            // markerIndex will be 0.
-            //
-            // If the URL were:
-            //
-            //   /something/pay/abc123
-            //
-            // markerIndex would point to the location where "/pay/" begins.
-            const markerIndex =
-                parsedUrl.pathname.indexOf(marker);
-
-            // If the URL does not contain /pay/, we cannot safely extract
-            // a payment token, so preserve the original URL.
-            if (markerIndex === -1) {
-                return storedLink;
-            }
-
-            // Extract everything after "/pay/".
-            //
-            // Example:
-            //
-            //   pathname = /pay/abc123
-            //   marker   = /pay/
-            //
-            // Result:
-            //
-            //   token = abc123
+    // =========================================================================
+    // UPDATED: PUBLIC FRONTEND PAYMENT LINK
+    // =========================================================================
+    //
+    // We keep the original token, but always rebuild the public URL using the
+    // resolved frontend base URL.
+    //
+    // This repairs both:
+    // - newly returned links with the wrong hostname;
+    // - old PaymentIntent rows already stored with a Render hostname.
+    // =========================================================================
+    const frontendPaymentLink =
+        useMemo(() => {
             const token =
-                parsedUrl.pathname.substring(
-                    markerIndex + marker.length
+                extractPaymentToken(
+                    cachedIntent?.payment_link
                 );
 
-            // If token extraction somehow produces an empty value,
-            // preserve the original link instead of creating /pay/.
             if (!token) {
-                return storedLink;
+                return "";
             }
 
-            // Rebuild the payment URL using the CURRENT frontend domain.
-            //
-            // Production:
-            //   https://payverify-web-v2.vercel.app/pay/abc123
-            //
-            // Local:
-            //   http://localhost:5173/pay/abc123
-            return `${window.location.origin}/pay/${token}`;
+            const frontendBaseUrl =
+                resolveFrontendBaseUrl();
 
-        } catch (error) {
+            return `${frontendBaseUrl}/pay/${token}`;
+        }, [cachedIntent?.payment_link]);
 
-            // =============================================================================
-            // FALLBACK:
-            //
-            // If URL parsing fails for any reason, attempt simple string extraction.
-            //
-            // Example:
-            //
-            //   https://payverifyv1.onrender.com/pay/abc123
-            //
-            // split("/pay/")[1]
-            //
-            // returns:
-            //
-            //   abc123
-            // =============================================================================
-            const token =
-                storedLink.split("/pay/")[1];
+    const paymentToken =
+        useMemo(
+            () =>
+                extractPaymentToken(
+                    frontendPaymentLink
+                ),
+            [frontendPaymentLink]
+        );
 
-            if (token) {
-                return `${window.location.origin}/pay/${token}`;
-            }
+    const qrCanvasId =
+        `payment-request-qr-${cachedIntent?.id || "current"}`;
 
-            // If the link cannot be normalized safely,
-            // preserve the original value.
-            return storedLink;
-        }
-    };
+    if (!open) {
+        return null;
+    }
 
-    // =============================================================================
-    // NEW:
-    // Resolve the normalized frontend payment URL once for use throughout
-    // this render.
-    //
-    // All user-facing payment actions below now use this URL instead of
-    // cachedIntent.payment_link directly.
-    // =============================================================================
-    const frontendPaymentLink = getFrontendPaymentLink();
-
-    // =============================================================================
-    // IMPORTANT:
-    // Keep this conditional return AFTER the hooks above.
-    //
-    // React hooks must always execute in the same order on every render.
-    // =============================================================================
-    if (!open) return null;
-
-    // =============================================================================
-    // UPDATED: COPY PAYMENT LINK
-    //
-    // BEFORE:
-    //   cachedIntent.payment_link
-    //
-    // NOW:
-    //   frontendPaymentLink
-    //
-    // WHY:
-    // Ensures users copy the Vercel frontend URL rather than an old Render URL.
-    // =============================================================================
     const handleCopy = async () => {
+        if (!frontendPaymentLink) {
+            toast.error(
+                "Payment link is unavailable"
+            );
 
-        if (!frontendPaymentLink) return;
+            return;
+        }
 
         try {
             await navigator.clipboard.writeText(
@@ -269,16 +251,13 @@ const PaymentRequestModal: React.FC<Props> = ({
             );
 
             setCopied(true);
-
             toast.success("Copied");
 
-            setTimeout(
+            window.setTimeout(
                 () => setCopied(false),
                 2000
             );
-
         } catch (error) {
-
             console.error(
                 "Failed to copy payment link:",
                 error
@@ -290,16 +269,11 @@ const PaymentRequestModal: React.FC<Props> = ({
         }
     };
 
-    // =============================================================================
-    // EXISTING: DOWNLOAD QR CODE
-    //
-    // The QR code itself is now generated from frontendPaymentLink below,
-    // so the downloaded QR image will also point to the correct frontend URL.
-    // =============================================================================
     const downloadQR = () => {
-
         const canvas =
-            document.querySelector("canvas");
+            document.getElementById(
+                qrCanvasId
+            ) as HTMLCanvasElement | null;
 
         if (!canvas) {
             toast.error(
@@ -309,44 +283,34 @@ const PaymentRequestModal: React.FC<Props> = ({
             return;
         }
 
-        const url =
+        const imageUrl =
             canvas.toDataURL("image/png");
 
-        const link =
+        const downloadLink =
             document.createElement("a");
 
-        link.href = url;
-        link.download = "payment-qr.png";
+        downloadLink.href = imageUrl;
+        downloadLink.download =
+            "payment-qr.png";
 
-        link.click();
+        downloadLink.click();
     };
 
-    // =============================================================================
-    // UPDATED: DOWNLOAD PDF INVOICE
+    // =========================================================================
+    // UPDATED: PDF DOWNLOAD
+    // =========================================================================
     //
-    // WHAT CHANGED:
-    // ------------------------------------------------------------
-    // Token extraction now uses frontendPaymentLink instead of the original
-    // cachedIntent.payment_link.
+    // BEFORE:
+    //     /api/invoices/token/<token>/pdf
     //
-    // WHY:
-    // ------------------------------------------------------------
-    // Keeps token extraction consistent with the normalized payment URL.
-    // =============================================================================
+    // That relative path can be sent to Vercel instead of the Render API.
+    //
+    // NOW:
+    //     <VITE_API_BASE_URL>/invoices/token/<token>/pdf
+    //
+    // =========================================================================
     const downloadPDF = () => {
-
-        if (!frontendPaymentLink) {
-            toast.error(
-                "Payment link is unavailable"
-            );
-
-            return;
-        }
-
-        const token =
-            frontendPaymentLink.split("/pay/")[1];
-
-        if (!token) {
+        if (!paymentToken) {
             toast.error(
                 "Unable to determine invoice token"
             );
@@ -354,48 +318,22 @@ const PaymentRequestModal: React.FC<Props> = ({
             return;
         }
 
-        // =============================================================================
-        // EXISTING PDF ROUTE PRESERVED
-        //
-        // NOTE:
-        // This remains unchanged from your existing implementation.
-        // =============================================================================
+        const apiBaseUrl =
+            resolveApiBaseUrl();
+
+        const pdfUrl =
+            `${apiBaseUrl}/invoices/token/${encodeURIComponent(
+                paymentToken
+            )}/pdf`;
+
         window.open(
-            `/api/invoices/token/${token}/pdf`,
+            pdfUrl,
             "_blank",
             "noopener,noreferrer"
         );
     };
 
-    // =============================================================================
-    // NEW: OPEN INVOICE HANDLER
-    //
-    // BEFORE:
-    //
-    //   window.open(
-    //       cachedIntent?.payment_link,
-    //       "_blank"
-    //   )
-    //
-    // NOW:
-    //
-    //   window.open(
-    //       frontendPaymentLink,
-    //       "_blank"
-    //   )
-    //
-    // WHY:
-    // ------------------------------------------------------------
-    // Prevents navigation to:
-    //
-    //   https://payverifyv1.onrender.com/pay/<token>
-    //
-    // and ensures navigation to:
-    //
-    //   https://payverify-web-v2.vercel.app/pay/<token>
-    // =============================================================================
     const handleOpenInvoice = () => {
-
         if (!frontendPaymentLink) {
             toast.error(
                 "Payment link is unavailable"
@@ -418,7 +356,6 @@ const PaymentRequestModal: React.FC<Props> = ({
             centered
             backdrop="static"
         >
-
             <Modal.Header closeButton>
                 <Modal.Title>
                     Payment Request Created
@@ -426,77 +363,71 @@ const PaymentRequestModal: React.FC<Props> = ({
             </Modal.Header>
 
             <Modal.Body>
-
                 <h4>
-                    ₦{cachedIntent?.amount?.toLocaleString()}
+                    ₦
+                    {Number(
+                        cachedIntent?.amount || 0
+                    ).toLocaleString()}
                 </h4>
 
                 <Badge bg="warning">
-                    Pending
+                    {cachedIntent?.status || "Pending"}
                 </Badge>
 
                 <div className="text-center my-3">
-
-                    {/* =========================================================
-                        UPDATED:
-                        QR now contains the normalized frontend payment URL.
-
-                        OLD:
-                            cachedIntent?.payment_link
-
-                        NEW:
-                            frontendPaymentLink
-
-                        WHY:
-                        Scanning the QR must open the Vercel frontend payment
-                        page, not the Render backend.
-                       ========================================================= */}
                     <QRCodeCanvas
+                        id={qrCanvasId}
                         value={frontendPaymentLink}
                         size={200}
                     />
-
                 </div>
 
-                {/* =============================================================
-                    UPDATED:
-                    Display the corrected frontend payment link to the user.
-                   ============================================================= */}
-                <small>
-                    {frontendPaymentLink}
+                <small
+                    style={{
+                        display: "block",
+                        overflowWrap: "anywhere",
+                    }}
+                >
+                    {frontendPaymentLink ||
+                        "Payment link unavailable"}
                 </small>
-
             </Modal.Body>
 
             <Modal.Footer>
-
-                <Button onClick={handleCopy}>
-                    {copied ? "Copied" : "Copy Link"}
+                <Button
+                    onClick={handleCopy}
+                    disabled={!frontendPaymentLink}
+                >
+                    {copied
+                        ? "Copied"
+                        : "Copy Link"}
                 </Button>
 
-                <Button onClick={downloadQR}>
+                <Button
+                    onClick={downloadQR}
+                    disabled={!frontendPaymentLink}
+                >
                     Download QR
                 </Button>
 
-                <Button onClick={downloadPDF}>
+                <Button
+                    onClick={downloadPDF}
+                    disabled={!paymentToken}
+                >
                     Download PDF
                 </Button>
 
-                {/* =============================================================
-                    UPDATED:
-                    Uses the normalized frontend URL rather than opening the
-                    backend-generated payment_link directly.
-                   ============================================================= */}
-                <Button onClick={handleOpenInvoice}>
+                <Button
+                    onClick={handleOpenInvoice}
+                    disabled={!frontendPaymentLink}
+                >
                     Open Invoice
                 </Button>
 
                 <Button onClick={onClose}>
                     Close
                 </Button>
-
             </Modal.Footer>
-
         </Modal>
     );
 };
