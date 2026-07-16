@@ -54,8 +54,27 @@ export class PaymentInitializationService {
             status: "initiated",
         });
 
+        // =============================================================================
+        // CHANGED
+        // WHY:
+        // The callback URL must match the React route defined in App.tsx.
+        // App.tsx exposes:
+        //
+        //     /invoice-pay/:invoiceId
+        //
+        // NOT:
+        //
+        //     /invoice/pay/:invoiceId
+        // =============================================================================
+
+        const frontendUrl =
+            String(
+                process.env.FRONTEND_URL ||
+                "http://localhost:5173"
+            ).replace(/\/+$/, "");
+
         const callbackUrl =
-            `${process.env.FRONTEND_URL}/invoice/pay/${invoiceId}`;
+            `${frontendUrl}/invoice-pay/${invoiceId}`;
 
         const response = await paystack.initializePayment({
             email,
