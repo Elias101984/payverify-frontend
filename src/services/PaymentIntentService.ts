@@ -109,34 +109,45 @@ export class PaymentIntentService {
         // WHY:
         // Closing and reopening the modal must not create duplicate intents.
         // ---------------------------------------------------------------------
+        const frontendUrl = String(
+            process.env.FRONTEND_URL ||
+            "http://localhost:5173"
+        ).replace(/\/+$/, "");
+
         let intent = await PaymentIntent.findOne({
             where: {
                 purchase_order_id: purchaseOrderId
             },
-            order: [['createdAt', 'DESC']]
+            order: [["createdAt", "DESC"]]
         });
 
         if (!intent) {
+
             const token =
-                crypto.randomBytes(32).toString('hex');
-
-            const frontendUrl =
-                String(
-                    process.env.FRONTEND_URL ||
-                    'http://localhost:5173'
-                ).replace(/\/+$/, '');
-
-            const paymentLink =
-                `${frontendUrl}/pay/${token}`;
+                crypto.randomBytes(32).toString("hex");
 
             intent = await PaymentIntent.create({
                 purchase_order_id: purchaseOrderId,
                 merchant_id: merchantId,
                 amount,
                 token,
-                payment_link: paymentLink,
-                status: 'pending'
+                payment_link: `${frontendUrl}/pay/${token}`,
+                status: "pending"
             });
+
+        } else {
+
+            // Keep existing intent but repair an outdated payment link if needed.
+            const expectedLink = `${frontendUrl}/pay/${intent.token}`;
+
+            if (intent.payment_link !== expectedLink) {
+
+                await intent.update({
+                    payment_link: expectedLink
+                });
+
+                intent.payment_link = expectedLink;
+            }
         }
 
         // ---------------------------------------------------------------------
